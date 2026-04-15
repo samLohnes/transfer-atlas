@@ -4,6 +4,7 @@ import { useFilters } from "@/hooks/useFilters";
 import { useClubNetwork } from "@/hooks/useClubNetwork";
 import { ClubSearchBar } from "@/components/molecules/ClubSearchBar";
 import { NetworkGraph } from "@/components/organisms/NetworkGraph";
+import { FilterBar } from "@/components/organisms/FilterBar";
 
 /** Network graph page — club-centric transfer relationship explorer. */
 export function NetworkGraphPage() {
@@ -35,8 +36,7 @@ export function NetworkGraphPage() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* Filter bar placeholder — built in Task 9 */}
-      <div className="h-14 bg-[#1a2e22] border-b border-[#2d4a38] shrink-0" />
+      <FilterBar />
 
       {/* Search bar */}
       <div className="flex justify-center py-3 px-4 shrink-0">

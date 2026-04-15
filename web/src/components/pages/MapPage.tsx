@@ -3,6 +3,7 @@ import { useFilters } from "@/hooks/useFilters";
 import { useMapData } from "@/hooks/useMapData";
 import { MapView } from "@/components/organisms/MapView";
 import { DetailPanel } from "@/components/organisms/DetailPanel";
+import { FilterBar } from "@/components/organisms/FilterBar";
 
 /** Map view page — the hero view of TransferAtlas. */
 export function MapPage() {
@@ -21,8 +22,7 @@ export function MapPage() {
   return (
     <div className="flex flex-1 overflow-hidden">
       <div className="flex flex-col flex-1 min-w-0">
-        {/* Filter bar placeholder — built in Task 9 */}
-        <div className="h-14 bg-[#1a2e22] border-b border-[#2d4a38] shrink-0" />
+        <FilterBar />
 
         {/* Map */}
         <div className="flex-1 relative">
