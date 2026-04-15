@@ -29,3 +29,8 @@ class TransferFilters:
     def needs_player_join(self) -> bool:
         """Whether these filters require joining through the Player table."""
         return self.position_groups is not None or self.age_min is not None or self.age_max is not None
+
+    @property
+    def needs_raw_transfers(self) -> bool:
+        """Whether these filters require querying raw Transfer rows instead of pre-aggregated tables."""
+        return self.needs_player_join or self.fee_min > 0 or self.fee_max is not None
