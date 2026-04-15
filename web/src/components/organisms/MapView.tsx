@@ -63,8 +63,6 @@ export function MapView({
     return Math.max(...flows.map((f) => f.total_fee_eur), 1);
   }, [flows]);
 
-  const flowThreshold = maxFlowFee * 0.005;
-
   // Total transfers per country for tooltip and node sizing
   const countryTransferTotals = useMemo(() => {
     const totals = new Map<number, { volume: number; count: number }>();
@@ -142,28 +140,79 @@ export function MapView({
       },
     });
 
-    const filteredFlows = flows.filter((f) => f.total_fee_eur >= flowThreshold);
+    // Collapse flows into net flows per country pair
+    const netFlowMap = new Map<string, {
+      countryA_id: number; countryA_name: string;
+      countryB_id: number; countryB_name: string;
+      netFee: number; totalTransfers: number;
+    }>();
+    for (const f of flows) {
+      const key = [Math.min(f.from_country_id, f.to_country_id), Math.max(f.from_country_id, f.to_country_id)].join("-");
+      const existing = netFlowMap.get(key);
+      if (existing) {
+        // from→to means to_country is paying (buying). Net = buyer spend.
+        // If from < to matches countryA < countryB, A→B direction is positive
+        if (f.from_country_id === existing.countryA_id) {
+          existing.netFee -= f.total_fee_eur; // A sold to B, B spent → B's direction
+        } else {
+          existing.netFee += f.total_fee_eur; // B sold to A, A spent → A's direction
+        }
+        existing.totalTransfers += f.transfer_count;
+      } else {
+        const aId = Math.min(f.from_country_id, f.to_country_id);
+        const bId = Math.max(f.from_country_id, f.to_country_id);
+        const aName = f.from_country_id === aId ? f.from_country_name : f.to_country_name;
+        const bName = f.to_country_id === bId ? f.to_country_name : f.from_country_name;
+        // fee goes from buyer (to_country) to seller (from_country)
+        // Convention: positive netFee = money flows A→B (A is buyer)
+        const net = f.from_country_id === aId ? -f.total_fee_eur : f.total_fee_eur;
+        netFlowMap.set(key, {
+          countryA_id: aId, countryA_name: aName,
+          countryB_id: bId, countryB_name: bName,
+          netFee: net, totalTransfers: f.transfer_count,
+        });
+      }
+    }
 
-    const arcData = filteredFlows
+    const maxNetFee = Math.max(...Array.from(netFlowMap.values()).map((f) => Math.abs(f.netFee)), 1);
+    const netFlowThreshold = maxNetFee * 0.005;
+
+    const arcData = Array.from(netFlowMap.values())
+      .filter((f) => Math.abs(f.netFee) >= netFlowThreshold)
       .map((f) => {
-        const from = countryById.get(f.from_country_id);
-        const to = countryById.get(f.to_country_id);
-        if (!from || !to) return null;
-        return { ...f, fromPos: [from.longitude, from.latitude], toPos: [to.longitude, to.latitude] };
+        // Arc goes from spender to receiver (direction of money)
+        const spenderId = f.netFee >= 0 ? f.countryA_id : f.countryB_id;
+        const receiverId = f.netFee >= 0 ? f.countryB_id : f.countryA_id;
+        const spenderName = f.netFee >= 0 ? f.countryA_name : f.countryB_name;
+        const receiverName = f.netFee >= 0 ? f.countryB_name : f.countryA_name;
+        const spender = countryById.get(spenderId);
+        const receiver = countryById.get(receiverId);
+        if (!spender || !receiver) return null;
+        return {
+          fromPos: [spender.longitude, spender.latitude] as [number, number],
+          toPos: [receiver.longitude, receiver.latitude] as [number, number],
+          fee: Math.abs(f.netFee),
+          spenderName,
+          receiverName,
+          totalTransfers: f.totalTransfers,
+        };
       })
-      .filter(Boolean);
+      .filter(Boolean) as {
+        fromPos: [number, number]; toPos: [number, number];
+        fee: number; spenderName: string; receiverName: string; totalTransfers: number;
+      }[];
 
-    const maxLogFee = Math.log10(Math.max(maxFlowFee, 1));
+    const maxLogFee = Math.log10(Math.max(maxNetFee, 1));
 
     const arcLayer = new ArcLayer({
       id: "flow-arcs",
       data: arcData,
-      getSourcePosition: (d: (typeof arcData)[0]) => d!.fromPos as [number, number],
-      getTargetPosition: (d: (typeof arcData)[0]) => d!.toPos as [number, number],
-      getSourceColor: [74, 222, 128, 178],
-      getTargetColor: [74, 222, 128, 178],
-      getWidth: (d: (typeof arcData)[0]) => {
-        const logFee = Math.log10(Math.max(d!.total_fee_eur, 1));
+      getSourcePosition: (d) => d.fromPos,
+      getTargetPosition: (d) => d.toPos,
+      getSourceColor: [239, 68, 68, 178],  // red (spender end)
+      getTargetColor: [34, 197, 94, 178],   // green (receiver end)
+      getWidth: (d) => {
+        const logFee = Math.log10(Math.max(d.fee, 1));
         const normalized = logFee / maxLogFee;
         return 1 + normalized * 11;
       },
@@ -175,22 +224,22 @@ export function MapView({
             type: "arc",
             x: info.x,
             y: info.y,
-            fromCountry: info.object.from_country_name,
-            toCountry: info.object.to_country_name,
-            fee: info.object.total_fee_eur,
-            transferCount: info.object.transfer_count,
+            fromCountry: info.object.spenderName,
+            toCountry: info.object.receiverName,
+            fee: info.object.fee,
+            transferCount: info.object.totalTransfers,
           });
         } else {
           setTooltip(null);
         }
       },
       updateTriggers: {
-        getWidth: [maxFlowFee],
+        getWidth: [maxNetFee],
       },
     });
 
     return [arcLayer, scatterLayer];
-  }, [countries, flows, countrySummaries, countryTransferTotals, maxVolume, maxAbsNetSpend, maxFlowFee, flowThreshold, countryById, summaryById, onSelectCountry]);
+  }, [countries, flows, countrySummaries, countryTransferTotals, maxVolume, maxAbsNetSpend, maxFlowFee, countryById, summaryById, onSelectCountry]);
 
   return (
     <div ref={containerRef} className="relative w-full h-full">
