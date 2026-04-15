@@ -51,6 +51,16 @@ export function NetworkGraph({
 }: NetworkGraphProps) {
   const graphRef = useRef<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [tooltip, setTooltip] = useState<{ x: number; y: number; content: string } | null>(null);
+  const mousePos = useRef({ x: 0, y: 0 });
+
+  // Track mouse position globally
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      mousePos.current = { x: e.clientX, y: e.clientY };
+    }
+    window.addEventListener("mousemove", onMove);
+    return () => window.removeEventListener("mousemove", onMove);
+  }, []);
 
   // Build graph data
   const { nodes, links } = useMemo(() => {
@@ -144,9 +154,9 @@ export function NetworkGraph({
   useEffect(() => {
     const fg = graphRef.current;
     if (!fg) return;
-    fg.d3Force("charge")?.strength(-500);
-    fg.d3Force("link")?.distance(250);
-    fg.d3Force("center")?.strength(1);
+    fg.d3Force("charge")?.strength(-400);
+    fg.d3Force("link")?.distance(200);
+    fg.d3Force("center")?.strength(0.05);
     fg.d3ReheatSimulation();
     // Fit all nodes in view after simulation settles
     const timer = setTimeout(() => {
@@ -215,14 +225,14 @@ export function NetworkGraph({
   }, [expandedCountries, onExpandCountry, onCollapseCountry, onRecenter]);
 
   // Hover handler
-  const handleNodeHover = useCallback((node: GraphNode | null, event?: MouseEvent) => {
+  const handleNodeHover = useCallback((node: GraphNode | null) => {
     if (!node || node.type === "center") {
       setTooltip(null);
       return;
     }
     setTooltip({
-      x: event?.clientX ?? 0,
-      y: event?.clientY ?? 0,
+      x: mousePos.current.x,
+      y: mousePos.current.y,
       content: `${node.label}\nSpent: ${formatFee(node.totalSpent ?? 0)}\nReceived: ${formatFee(node.totalReceived ?? 0)}\n${formatCount(node.transferCount ?? 0)} transfers`,
     });
   }, []);
@@ -263,9 +273,10 @@ export function NetworkGraph({
         onNodeClick={handleNodeClick}
         onNodeHover={handleNodeHover}
         backgroundColor="#0f1a14"
-        d3AlphaDecay={0.02}
-        d3VelocityDecay={0.25}
-        cooldownTicks={200}
+        d3AlphaDecay={0.05}
+        d3VelocityDecay={0.4}
+        cooldownTicks={100}
+        warmupTicks={50}
         nodeRelSize={1}
       />
 
