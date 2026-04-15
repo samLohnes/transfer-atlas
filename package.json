@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@fontsource-variable/dm-sans": "^5.2.8",
+    "@fontsource/geist-mono": "^5.2.7",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "geist": "^1.7.0"
+  }
+}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import { formatFee, formatCount } from "@/lib/format";
-import { getFlag } from "@/lib/flags";
+// import { getFlag } from "@/lib/flags";
 import { Spinner } from "@/components/atoms/Spinner";
 import { EmptyState } from "@/components/molecules/EmptyState";
 import { ErrorState } from "@/components/molecules/ErrorState";

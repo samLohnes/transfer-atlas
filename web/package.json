@@ -11,10 +11,12 @@
   "dependencies": {
     "@base-ui/react": "^1.4.0",
     "@fontsource-variable/geist": "^5.2.8",
+    "@fontsource/geist-mono": "^5.2.7",
     "@types/maplibre-gl": "^1.13.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "deck.gl": "^9.3.0",
+    "geist": "^1.7.0",
     "lucide-react": "^1.8.0",
     "maplibre-gl": "^5.23.0",
     "react": "^19.1.0",
