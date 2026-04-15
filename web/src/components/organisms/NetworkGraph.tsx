@@ -4,6 +4,7 @@ import { formatFee, formatCount } from "@/lib/format";
 import { getFlag } from "@/lib/flags";
 import { Spinner } from "@/components/atoms/Spinner";
 import { EmptyState } from "@/components/molecules/EmptyState";
+import { ErrorState } from "@/components/molecules/ErrorState";
 import type { ClubNetworkResponse, ClubNetworkExpandResponse } from "@/types/api";
 
 interface NetworkGraphProps {
@@ -11,6 +12,8 @@ interface NetworkGraphProps {
   expandedData: Map<number, ClubNetworkExpandResponse>;
   expandedCountries: Set<number>;
   isLoading: boolean;
+  error: string | null;
+  onRetry: () => void;
   onExpandCountry: (countryId: number) => void;
   onCollapseCountry: (countryId: number) => void;
   onRecenter: (clubId: number) => void;
@@ -45,6 +48,8 @@ export function NetworkGraph({
   expandedData,
   expandedCountries,
   isLoading,
+  error,
+  onRetry,
   onExpandCountry,
   onCollapseCountry,
   onRecenter,
@@ -231,6 +236,14 @@ export function NetworkGraph({
       content: `${node.label}\nSpent: ${formatFee(node.totalSpent ?? 0)}\nReceived: ${formatFee(node.totalReceived ?? 0)}\n${formatCount(node.transferCount ?? 0)} transfers`,
     });
   }, []);
+
+  if (error) {
+    return (
+      <div style={{ width: "100%", height: "100%" }} className="flex items-center justify-center">
+        <ErrorState message={error} onRetry={onRetry} />
+      </div>
+    );
+  }
 
   if (isLoading && !networkData) {
     return (

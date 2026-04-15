@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchCountryDetail } from "@/lib/api";
 import type { FilterState } from "@/types/filter";
 import type { CountryDetailResponse } from "@/types/api";
@@ -14,6 +14,8 @@ interface UseCountryDetailOptions {
 interface UseCountryDetailResult {
   data: CountryDetailResponse | null;
   isLoading: boolean;
+  error: string | null;
+  retry: () => void;
 }
 
 /** Fetches country detail data, re-fetching on any input change. */
@@ -26,23 +28,32 @@ export function useCountryDetail({
 }: UseCountryDetailOptions): UseCountryDetailResult {
   const [data, setData] = useState<CountryDetailResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fetchKey, setFetchKey] = useState(0);
 
   useEffect(() => {
     if (countryId === null) {
       setData(null);
+      setError(null);
       return;
     }
 
     setIsLoading(true);
+    setError(null);
     fetchCountryDetail(countryId, filters, { sortBy, sortOrder, page, pageSize: 20 })
       .then(setData)
-      .catch(() => setData(null))
+      .catch((err) => {
+        console.error("Failed to fetch country detail:", err);
+        setError("Something went wrong loading country data.");
+        setData(null);
+      })
       .finally(() => setIsLoading(false));
   }, [
     countryId,
     sortBy,
     sortOrder,
     page,
+    fetchKey,
     filters.windowStart,
     filters.windowEnd,
     filters.transferType,
@@ -53,5 +64,7 @@ export function useCountryDetail({
     filters.ageMax,
   ]);
 
-  return { data, isLoading };
+  const retry = useCallback(() => setFetchKey((k) => k + 1), []);
+
+  return { data, isLoading, error, retry };
 }

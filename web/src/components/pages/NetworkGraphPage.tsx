@@ -26,6 +26,8 @@ export function NetworkGraphPage() {
     expandedData,
     expandedCountries,
     isLoading,
+    error,
+    retry,
     expandCountry,
     collapseCountry,
   } = useClubNetwork(clubId, filters);
@@ -50,6 +52,8 @@ export function NetworkGraphPage() {
           expandedData={expandedData}
           expandedCountries={expandedCountries}
           isLoading={isLoading}
+          error={error}
+          onRetry={retry}
           onExpandCountry={expandCountry}
           onCollapseCountry={collapseCountry}
           onRecenter={handleRecenter}
