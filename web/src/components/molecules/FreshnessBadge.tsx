@@ -5,7 +5,7 @@ import { Badge } from "@/components/atoms/Badge";
 /** Displays data freshness from pipeline metadata. Turns amber if data > 45 days old. */
 export function FreshnessBadge() {
   const [label, setLabel] = useState<string | null>(null);
-  const [isStale, setIsStale] = useState(false);
+  const [variant, setVariant] = useState<"default" | "warning">("default");
 
   useEffect(() => {
     fetchMetadata()
@@ -16,19 +16,23 @@ export function FreshnessBadge() {
           day: "numeric",
           year: "numeric",
         });
-        setLabel(`Data updated: ${formatted}`);
+        setLabel(`Updated: ${formatted}`);
 
         const daysSince = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24);
-        setIsStale(daysSince > 45);
+        setVariant(daysSince > 45 ? "warning" : "default");
       })
-      .catch(() => setLabel("Data: unknown"));
+      .catch((err) => {
+        if (err.message.includes("404")) {
+          setLabel("No data loaded");
+          setVariant("warning");
+        } else {
+          setLabel("Data: unavailable");
+          setVariant("warning");
+        }
+      });
   }, []);
 
   if (!label) return null;
 
-  return (
-    <Badge variant={isStale ? "warning" : "default"}>
-      {label}
-    </Badge>
-  );
+  return <Badge variant={variant}>{label}</Badge>;
 }

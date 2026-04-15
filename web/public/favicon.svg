@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <circle cx="16" cy="16" r="14" fill="#1a472a"/>
+  <circle cx="16" cy="16" r="10" fill="#4ade80" opacity="0.9"/>
+  <text x="16" y="21" text-anchor="middle" fill="#0f1a14" font-family="system-ui" font-weight="bold" font-size="12">TA</text>
+</svg>

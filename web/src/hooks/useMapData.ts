@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchCountries, fetchCountryFlows } from "@/lib/api";
-import type { Country } from "@/types/country";
-import type { CountryFlow, CountrySummary } from "@/types/country";
+import type { Country, CountryFlow, CountrySummary } from "@/types/country";
 import type { FilterState } from "@/types/filter";
 
 interface MapData {
@@ -9,6 +8,8 @@ interface MapData {
   flows: CountryFlow[];
   countrySummaries: CountrySummary[];
   isLoading: boolean;
+  error: string | null;
+  retry: () => void;
 }
 
 /** Fetches countries (once) and flows (on filter change) for the map view. */
@@ -17,7 +18,9 @@ export function useMapData(filters: FilterState): MapData {
   const [flows, setFlows] = useState<CountryFlow[]>([]);
   const [countrySummaries, setCountrySummaries] = useState<CountrySummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const countriesFetched = useRef(false);
+  const [fetchKey, setFetchKey] = useState(0);
 
   // Fetch countries once
   useEffect(() => {
@@ -25,20 +28,25 @@ export function useMapData(filters: FilterState): MapData {
     countriesFetched.current = true;
     fetchCountries()
       .then((res) => setCountries(res.countries))
-      .catch(() => {});
+      .catch((err) => console.error("Failed to fetch countries:", err));
   }, []);
 
   // Fetch flows on filter change
   useEffect(() => {
     setIsLoading(true);
+    setError(null);
     fetchCountryFlows(filters)
       .then((res) => {
         setFlows(res.flows);
         setCountrySummaries(res.country_summaries);
       })
-      .catch(() => {})
+      .catch((err) => {
+        console.error("Failed to fetch flows:", err);
+        setError("Something went wrong loading flow data.");
+      })
       .finally(() => setIsLoading(false));
   }, [
+    fetchKey,
     filters.windowStart,
     filters.windowEnd,
     filters.transferType,
@@ -49,5 +57,7 @@ export function useMapData(filters: FilterState): MapData {
     filters.ageMax,
   ]);
 
-  return { countries, flows, countrySummaries, isLoading };
+  const retry = useCallback(() => setFetchKey((k) => k + 1), []);
+
+  return { countries, flows, countrySummaries, isLoading, error, retry };
 }

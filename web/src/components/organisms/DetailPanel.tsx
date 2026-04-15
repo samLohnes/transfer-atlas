@@ -6,6 +6,7 @@ import { useCountryDetail } from "@/hooks/useCountryDetail";
 import { Badge } from "@/components/atoms/Badge";
 import { Spinner } from "@/components/atoms/Spinner";
 import { EmptyState } from "@/components/molecules/EmptyState";
+import { ErrorState } from "@/components/molecules/ErrorState";
 import { formatFee, formatCount, formatDate } from "@/lib/format";
 import { getFlag } from "@/lib/flags";
 import type { TopClub } from "@/types/club";
@@ -28,7 +29,7 @@ export function DetailPanel({ countryId, onClose }: DetailPanelProps) {
   // Reset pagination when country or filters change
   useEffect(() => { setPage(1); }, [countryId, filters]);
 
-  const { data, isLoading } = useCountryDetail({ countryId, filters, sortBy, sortOrder, page });
+  const { data, isLoading, error, retry } = useCountryDetail({ countryId, filters, sortBy, sortOrder, page });
 
   const handleSort = useCallback((field: SortField) => {
     if (sortBy === field) {
@@ -85,7 +86,7 @@ export function DetailPanel({ countryId, onClose }: DetailPanelProps) {
       }`}
     >
       {isOpen && (
-        <div className="p-5">
+        <div className="p-5 relative">
           {/* Close button */}
           <button
             onClick={onClose}
@@ -96,6 +97,8 @@ export function DetailPanel({ countryId, onClose }: DetailPanelProps) {
 
           {isLoading && !data ? (
             <div className="flex justify-center py-16"><Spinner size="lg" /></div>
+          ) : error ? (
+            <ErrorState message={error} onRetry={retry} />
           ) : !data ? (
             <EmptyState message="Country not found" />
           ) : (
