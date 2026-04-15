@@ -1,24 +1,59 @@
-import { useParams } from "react-router-dom";
-import { Network } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { useFilters } from "@/hooks/useFilters";
+import { useClubNetwork } from "@/hooks/useClubNetwork";
 import { ClubSearchBar } from "@/components/molecules/ClubSearchBar";
+import { NetworkGraph } from "@/components/organisms/NetworkGraph";
 
-/** Placeholder for the Network Graph view — built in Task 8. */
+/** Network graph page — club-centric transfer relationship explorer. */
 export function NetworkGraphPage() {
-  const { clubId } = useParams<{ clubId: string }>();
+  const { clubId: clubIdParam } = useParams<{ clubId: string }>();
+  const navigate = useNavigate();
+  const { filters } = useFilters();
+
+  const [clubId, setClubId] = useState<number | null>(
+    clubIdParam ? parseInt(clubIdParam, 10) : null,
+  );
+
+  // Sync URL param to state
+  useEffect(() => {
+    setClubId(clubIdParam ? parseInt(clubIdParam, 10) : null);
+  }, [clubIdParam]);
+
+  const {
+    networkData,
+    expandedData,
+    expandedCountries,
+    isLoading,
+    expandCountry,
+    collapseCountry,
+  } = useClubNetwork(clubId, filters);
+
+  const handleRecenter = useCallback((newClubId: number) => {
+    navigate(`/network/${newClubId}`);
+  }, [navigate]);
 
   return (
-    <div className="flex-1 flex flex-col">
-      <div className="flex justify-center py-4">
-        <ClubSearchBar className="w-96" />
+    <div className="flex-1 flex flex-col min-h-0">
+      {/* Filter bar placeholder — built in Task 9 */}
+      <div className="h-14 bg-[#1a2e22] border-b border-[#2d4a38] shrink-0" />
+
+      {/* Search bar */}
+      <div className="flex justify-center py-3 px-4 shrink-0">
+        <ClubSearchBar className="w-full max-w-[480px]" />
       </div>
-      <div className="flex-1 flex items-center justify-center text-[#8fa898]">
-        <div className="text-center">
-          <Network className="h-16 w-16 mx-auto mb-4 opacity-30" />
-          <p className="text-lg">Network Graph View</p>
-          <p className="text-sm mt-1">
-            {clubId ? `Club ID: ${clubId}` : "Search for a club above to explore its transfer network"}
-          </p>
-        </div>
+
+      {/* Network graph — explicit flex child that fills remaining height */}
+      <div className="flex-1 min-h-0">
+        <NetworkGraph
+          networkData={networkData}
+          expandedData={expandedData}
+          expandedCountries={expandedCountries}
+          isLoading={isLoading}
+          onExpandCountry={expandCountry}
+          onCollapseCountry={collapseCountry}
+          onRecenter={handleRecenter}
+        />
       </div>
     </div>
   );
