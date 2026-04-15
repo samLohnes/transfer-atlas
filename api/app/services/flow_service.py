@@ -1,6 +1,6 @@
 """Service for country transfer flow queries."""
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session, aliased
 
 from app.models import Club, Country, CountryTransferFlow, Player, Transfer
@@ -12,7 +12,7 @@ from app.services.windows import get_windows_in_range
 
 def get_country_flows(db: Session, filters: TransferFilters) -> CountryFlowsResponse:
     """Get country-to-country flows, using fast path or slow path based on filters."""
-    if filters.needs_player_join:
+    if filters.needs_raw_transfers:
         return _slow_path(db, filters)
     return _fast_path(db, filters)
 
@@ -68,7 +68,7 @@ def _slow_path(db: Session, filters: TransferFilters) -> CountryFlowsResponse:
             ToClub.country_id.label("to_country_id"),
             ToCountry.name.label("to_name"),
             func.coalesce(
-                func.sum(func.case((Transfer.fee_is_loan == False, Transfer.fee_eur), else_=0)),  # noqa: E712
+                func.sum(case((Transfer.fee_is_loan == False, Transfer.fee_eur), else_=0)),  # noqa: E712
                 0,
             ).label("total_fee_eur"),
             func.count().filter(Transfer.fee_is_loan == False).label("transfer_count"),  # noqa: E712
