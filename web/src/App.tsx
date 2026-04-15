@@ -1,33 +1,39 @@
-import { useEffect, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { NavBar } from "@/components/organisms/NavBar";
+import { MapPage } from "@/components/pages/MapPage";
+import { NetworkGraphPage } from "@/components/pages/NetworkGraphPage";
+import {
+  DEFAULT_FILTERS,
+  FilterContext,
+  filterReducer,
+} from "@/hooks/useFilters";
+import { fetchWindows } from "@/lib/api";
+import type { TransferWindow } from "@/types/filter";
 
 function App() {
-  const [health, setHealth] = useState<string>("checking...");
+  const [filters, dispatch] = useReducer(filterReducer, DEFAULT_FILTERS);
+  const [availableWindows, setAvailableWindows] = useState<TransferWindow[]>([]);
 
   useEffect(() => {
-    fetch("/api/v1/health")
-      .then((res) => res.json())
-      .then((data) => setHealth(data.status))
-      .catch(() => setHealth("unreachable"));
+    fetchWindows()
+      .then((res) => setAvailableWindows(res.windows))
+      .catch(() => {});
   }, []);
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-pitch-500 mb-4">
-          TransferAtlas
-        </h1>
-        <p className="text-lg text-gray-400">
-          API status:{" "}
-          <span
-            className={
-              health === "ok" ? "text-green-400 font-semibold" : "text-red-400"
-            }
-          >
-            {health}
-          </span>
-        </p>
-      </div>
-    </div>
+    <FilterContext value={{ filters, dispatch, availableWindows }}>
+      <BrowserRouter>
+        <div className="flex flex-col h-screen bg-[#0f1a14] text-[#e8f0ec]">
+          <NavBar />
+          <Routes>
+            <Route path="/" element={<MapPage />} />
+            <Route path="/network" element={<NetworkGraphPage />} />
+            <Route path="/network/:clubId" element={<NetworkGraphPage />} />
+          </Routes>
+        </div>
+      </BrowserRouter>
+    </FilterContext>
   );
 }
 

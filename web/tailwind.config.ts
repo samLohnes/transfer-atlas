@@ -7,11 +7,16 @@ export default {
     extend: {
       colors: {
         pitch: {
-          900: "#1a472a",
-          800: "#1f5233",
-          700: "#2d5a3f",
-          600: "#3a7a54",
-          500: "#4a9a6a",
+          bg: "#0f1a14",
+          dark: "#1a2e22",
+          medium: "#1e3a2a",
+          input: "#243d2e",
+          border: "#2d4a38",
+          text: "#e8f0ec",
+          muted: "#8fa898",
+          accent: "#4ade80",
+          spend: "#ef4444",
+          receive: "#22c55e",
         },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
