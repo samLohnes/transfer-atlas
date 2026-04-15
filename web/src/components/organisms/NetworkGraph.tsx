@@ -150,7 +150,7 @@ export function NetworkGraph({
     return { nodes, links };
   }, [networkData, expandedData, expandedCountries]);
 
-  // Configure forces and fit view when graph data changes
+  // Configure forces when graph data changes
   useEffect(() => {
     const fg = graphRef.current;
     if (!fg) return;
@@ -158,11 +158,6 @@ export function NetworkGraph({
     fg.d3Force("link")?.distance(200);
     fg.d3Force("center")?.strength(0.05);
     fg.d3ReheatSimulation();
-    // Fit all nodes in view after simulation settles
-    const timer = setTimeout(() => {
-      fg.zoomToFit(400, 80);
-    }, 1000);
-    return () => clearTimeout(timer);
   }, [nodes.length]);
 
   // Custom node rendering
@@ -275,8 +270,12 @@ export function NetworkGraph({
         backgroundColor="#0f1a14"
         d3AlphaDecay={0.05}
         d3VelocityDecay={0.4}
+        cooldownTime={3000}
         cooldownTicks={100}
         warmupTicks={50}
+        enableNodeDrag={true}
+        autoPauseRedraw={false}
+        onEngineStop={() => graphRef.current?.zoomToFit(400, 80)}
         nodeRelSize={1}
       />
 
