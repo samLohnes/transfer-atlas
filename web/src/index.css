@@ -30,7 +30,105 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: #0f1a14;
+  background-color: #0a1410;
   color: #e8f0ec;
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-family: "Geist Variable", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2d4a38;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3d5a48;
+}
+
+/* Custom range slider styling */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  height: 20px;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 3px;
+  background: linear-gradient(90deg, #1a2e22 0%, #2d4a38 100%);
+  border-radius: 2px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #4ade80;
+  margin-top: -5.5px;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
+  border: 2px solid #0a1410;
+  transition: box-shadow 0.2s, transform 0.15s;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 14px rgba(74, 222, 128, 0.6);
+  transform: scale(1.15);
+}
+
+input[type="range"]::-webkit-slider-thumb:active {
+  transform: scale(1.25);
+  box-shadow: 0 0 18px rgba(74, 222, 128, 0.7);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 3px;
+  background: linear-gradient(90deg, #1a2e22 0%, #2d4a38 100%);
+  border-radius: 2px;
+  border: none;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #4ade80;
+  border: 2px solid #0a1410;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
+}
+
+/* Tabular nums utility */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Mono font for data */
+.font-data {
+  font-family: "Geist Mono", "SF Mono", "Menlo", monospace;
+}
+
+/* Glow effect for accent elements */
+.glow-green {
+  box-shadow: 0 0 12px rgba(74, 222, 128, 0.15);
+}
+
+/* Subtle noise texture overlay */
+.noise::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.015;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
 }

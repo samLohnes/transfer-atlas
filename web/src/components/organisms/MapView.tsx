@@ -33,7 +33,7 @@ export function MapView({
   flows,
   countrySummaries,
   isLoading,
-  selectedCountryId,
+  selectedCountryId: _selectedCountryId,
   onSelectCountry,
 }: MapViewProps) {
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
@@ -250,7 +250,7 @@ export function MapView({
         onClick={(info: { layer?: unknown }) => {
           if (!info.layer) onSelectCountry(null);
         }}
-        style={{ position: "absolute", inset: 0 }}
+        style={{ position: "absolute", inset: "0" }}
       >
         <MapGL mapStyle={MAP_STYLE} />
       </DeckGL>

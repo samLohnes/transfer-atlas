@@ -1,4 +1,3 @@
-import { Badge } from "@/components/atoms/Badge";
 import { formatFee, formatDate } from "@/lib/format";
 import type { TransferRow as TransferRowType } from "@/types/transfer";
 

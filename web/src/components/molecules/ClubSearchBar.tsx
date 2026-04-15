@@ -10,7 +10,7 @@ interface ClubSearchBarProps {
   className?: string;
 }
 
-/** Text input with autocomplete dropdown for club search. */
+/** Text input with autocomplete dropdown — frosted glass style. */
 export function ClubSearchBar({ className = "" }: ClubSearchBarProps) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
@@ -53,36 +53,37 @@ export function ClubSearchBar({ className = "" }: ClubSearchBarProps) {
 
   return (
     <div ref={containerRef} className={`relative ${className}`}>
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#8fa898]" />
+      <div className="relative group">
+        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6b8a78] transition-colors group-focus-within:text-[#4ade80]" />
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => results.length > 0 && setIsOpen(true)}
           placeholder="Search clubs..."
-          className="w-full rounded-md bg-[#243d2e] border border-[#2d4a38] pl-10 pr-4 py-2 text-sm text-[#e8f0ec] placeholder-[#8fa898] focus:outline-none focus:border-[#4ade80]"
+          className="w-full rounded-xl bg-white/[0.03] border border-white/[0.06] pl-10 pr-4 py-2.5 text-[13px] text-[#e8f0ec] placeholder-[#4a6555] focus:outline-none focus:border-[#4ade80]/30 focus:bg-white/[0.05] focus:shadow-[0_0_20px_rgba(74,222,128,0.08)] transition-all duration-200"
         />
-        {isLoading && <Spinner size="sm" className="absolute right-3 top-1/2 -translate-y-1/2" />}
+        {isLoading && <Spinner size="sm" className="absolute right-3.5 top-1/2 -translate-y-1/2" />}
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 mt-1 w-full rounded-md bg-[#1e3a2a] border border-[#2d4a38] shadow-lg max-h-60 overflow-y-auto">
+        <div className="absolute z-50 mt-2 w-full rounded-xl bg-[#0e1f16]/95 backdrop-blur-xl border border-white/[0.08] shadow-[0_16px_48px_rgba(0,0,0,0.5)] max-h-64 overflow-y-auto">
           {query.length < 2 ? (
-            <div className="px-4 py-3 text-sm text-[#8fa898]">Type at least 2 characters</div>
+            <div className="px-4 py-3.5 text-[13px] text-[#4a6555]">Type at least 2 characters</div>
           ) : results.length === 0 ? (
-            <div className="px-4 py-3 text-sm text-[#8fa898]">No results</div>
+            <div className="px-4 py-3.5 text-[13px] text-[#4a6555]">No results</div>
           ) : (
-            results.map((club) => (
+            results.map((club, i) => (
               <button
                 key={club.club_id}
                 onClick={() => handleSelect(club)}
-                className="w-full text-left px-4 py-2 hover:bg-[#243d2e] transition-colors"
+                className={`w-full text-left px-4 py-2.5 hover:bg-white/[0.04] transition-colors ${i > 0 ? "border-t border-white/[0.04]" : ""}`}
               >
-                <div className="text-sm text-[#e8f0ec]">{club.club_name}</div>
-                <div className="text-xs text-[#8fa898]">
+                <div className="text-[13px] font-medium text-[#e8f0ec]">{club.club_name}</div>
+                <div className="text-[11px] text-[#4a6555] mt-0.5">
                   {club.country_name}
-                  {club.league_name && ` · ${club.league_name}`}
+                  {club.league_name && <span className="text-white/10 mx-1">·</span>}
+                  {club.league_name && <span>{club.league_name}</span>}
                 </div>
               </button>
             ))
