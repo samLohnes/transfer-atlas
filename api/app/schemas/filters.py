@@ -1,0 +1,31 @@
+"""Shared filter parameter schemas."""
+
+from dataclasses import dataclass
+
+from fastapi import Query
+
+
+@dataclass
+class TransferFilters:
+    """Shared filter parameters for all data endpoints."""
+
+    window_start: str | None = Query(None, description="Start of time range, e.g. 'Summer 2019'")
+    window_end: str | None = Query(None, description="End of time range, e.g. 'Winter 2023'")
+    transfer_type: str = Query("permanent", description="'permanent', 'loan', or 'all'")
+    fee_min: int = Query(0, description="Minimum fee in EUR cents")
+    fee_max: int | None = Query(None, description="Maximum fee in EUR cents (null = no limit)")
+    position_group: str | None = Query(None, description="Comma-separated: GK, DEF, MID, FWD")
+    age_min: int | None = Query(None, description="Minimum player age at transfer")
+    age_max: int | None = Query(None, description="Maximum player age at transfer")
+
+    @property
+    def position_groups(self) -> list[str] | None:
+        """Parse comma-separated position_group into a list."""
+        if not self.position_group:
+            return None
+        return [pg.strip().upper() for pg in self.position_group.split(",") if pg.strip()]
+
+    @property
+    def needs_player_join(self) -> bool:
+        """Whether these filters require joining through the Player table."""
+        return self.position_groups is not None or self.age_min is not None or self.age_max is not None
