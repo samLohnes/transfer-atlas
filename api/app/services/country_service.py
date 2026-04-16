@@ -19,6 +19,7 @@ from app.services.windows import get_windows_in_range
 def get_country_detail(
     db: Session, country_id: int, filters: TransferFilters,
     sort_by: str, sort_order: str, page: int, page_size: int,
+    counterpart_country_id: int | None = None,
 ) -> CountryDetailResponse | None:
     """Build the country detail panel response."""
     country = db.query(Country).filter(Country.id == country_id, Country.in_scope == True).first()  # noqa: E712
@@ -27,6 +28,12 @@ def get_country_detail(
 
     # Get clubs in this country
     club_ids = [c.id for c in db.query(Club.id).filter(Club.country_id == country_id).all()]
+
+    # Get counterpart club IDs if filtering by counterpart country
+    counterpart_club_ids: list[int] | None = None
+    if counterpart_country_id is not None:
+        counterpart_club_ids = [c.id for c in db.query(Club.id).filter(Club.country_id == counterpart_country_id).all()]
+
     if not club_ids:
         return CountryDetailResponse(
             country=CountrySummary(id=country.id, name=country.name, iso_code=country.iso_code, net_spend_eur=0),
@@ -39,23 +46,89 @@ def get_country_detail(
     all_windows = get_all_windows(db)
     windows = get_windows_in_range(all_windows, filters.window_start, filters.window_end)
 
-    # Single query for all club summaries in this country
-    summary_query = (
-        db.query(
-            ClubTransferSummary.club_id,
-            Club.name.label("club_name"),
-            func.sum(ClubTransferSummary.total_spent_eur).label("total_spent"),
-            func.sum(ClubTransferSummary.total_received_eur).label("total_received"),
-            func.sum(ClubTransferSummary.players_bought).label("bought_count"),
-            func.sum(ClubTransferSummary.players_sold).label("sold_count"),
+    # Club summaries — when counterpart is set, we can't use pre-aggregated table
+    # because it doesn't know which transfers are with which country pair.
+    # Fall back to computing from raw transfers.
+    if counterpart_club_ids is not None:
+        from sqlalchemy import case, or_, and_
+        # Compute summaries from raw transfers for clubs in this country
+        # that traded with clubs in the counterpart country
+        all_club_ids = club_ids + (counterpart_club_ids or [])
+        buy_sub = (
+            db.query(
+                Transfer.to_club_id.label("club_id"),
+                func.coalesce(func.sum(Transfer.fee_eur), 0).label("total_spent"),
+                func.count().label("bought_count"),
+            )
+            .filter(
+                Transfer.to_club_id.in_(club_ids),
+                Transfer.from_club_id.in_(counterpart_club_ids),
+                Transfer.fee_is_loan == False,  # noqa: E712
+            )
         )
-        .join(Club, Club.id == ClubTransferSummary.club_id)
-        .filter(ClubTransferSummary.club_id.in_(club_ids))
-    )
-    if windows is not None:
-        summary_query = summary_query.filter(ClubTransferSummary.transfer_window.in_(windows))
-    summary_query = summary_query.group_by(ClubTransferSummary.club_id, Club.name)
-    all_summaries = summary_query.all()
+        if windows is not None:
+            buy_sub = buy_sub.filter(Transfer.transfer_window.in_(windows))
+        buy_sub = buy_sub.group_by(Transfer.to_club_id)
+        buy_rows = {r.club_id: r for r in buy_sub.all()}
+
+        sell_sub = (
+            db.query(
+                Transfer.from_club_id.label("club_id"),
+                func.coalesce(func.sum(Transfer.fee_eur), 0).label("total_received"),
+                func.count().label("sold_count"),
+            )
+            .filter(
+                Transfer.from_club_id.in_(club_ids),
+                Transfer.to_club_id.in_(counterpart_club_ids),
+                Transfer.fee_is_loan == False,  # noqa: E712
+            )
+        )
+        if windows is not None:
+            sell_sub = sell_sub.filter(Transfer.transfer_window.in_(windows))
+        sell_sub = sell_sub.group_by(Transfer.from_club_id)
+        sell_rows = {r.club_id: r for r in sell_sub.all()}
+
+        # Build combined summaries
+        all_involved = set(buy_rows.keys()) | set(sell_rows.keys())
+        club_names = {c.id: c.name for c in db.query(Club.id, Club.name).filter(Club.id.in_(all_involved)).all()}
+
+        class _Summary:
+            def __init__(self, club_id: int, club_name: str, total_spent: int, total_received: int, bought_count: int, sold_count: int):
+                self.club_id = club_id
+                self.club_name = club_name
+                self.total_spent = total_spent
+                self.total_received = total_received
+                self.bought_count = bought_count
+                self.sold_count = sold_count
+
+        all_summaries = [
+            _Summary(
+                cid,
+                club_names.get(cid, "Unknown"),
+                int(buy_rows[cid].total_spent) if cid in buy_rows else 0,
+                int(sell_rows[cid].total_received) if cid in sell_rows else 0,
+                int(buy_rows[cid].bought_count) if cid in buy_rows else 0,
+                int(sell_rows[cid].sold_count) if cid in sell_rows else 0,
+            )
+            for cid in all_involved
+        ]
+    else:
+        summary_query = (
+            db.query(
+                ClubTransferSummary.club_id,
+                Club.name.label("club_name"),
+                func.sum(ClubTransferSummary.total_spent_eur).label("total_spent"),
+                func.sum(ClubTransferSummary.total_received_eur).label("total_received"),
+                func.sum(ClubTransferSummary.players_bought).label("bought_count"),
+                func.sum(ClubTransferSummary.players_sold).label("sold_count"),
+            )
+            .join(Club, Club.id == ClubTransferSummary.club_id)
+            .filter(ClubTransferSummary.club_id.in_(club_ids))
+        )
+        if windows is not None:
+            summary_query = summary_query.filter(ClubTransferSummary.transfer_window.in_(windows))
+        summary_query = summary_query.group_by(ClubTransferSummary.club_id, Club.name)
+        all_summaries = summary_query.all()
 
     # Slice top 5 buyers and sellers from the same result set
     top_buyers = sorted(all_summaries, key=lambda r: -(r.total_spent or 0))[:5]
@@ -83,10 +156,19 @@ def get_country_detail(
         .join(Player, Transfer.player_id == Player.id)
         .join(FromClub, Transfer.from_club_id == FromClub.id)
         .join(ToClub, Transfer.to_club_id == ToClub.id)
-        .filter(
+    )
+
+    # Filter by country pair or single country
+    if counterpart_club_ids is not None:
+        from sqlalchemy import or_, and_
+        transfer_query = transfer_query.filter(or_(
+            and_(Transfer.from_club_id.in_(club_ids), Transfer.to_club_id.in_(counterpart_club_ids)),
+            and_(Transfer.from_club_id.in_(counterpart_club_ids), Transfer.to_club_id.in_(club_ids)),
+        ))
+    else:
+        transfer_query = transfer_query.filter(
             (Transfer.from_club_id.in_(club_ids)) | (Transfer.to_club_id.in_(club_ids))
         )
-    )
 
     transfer_query = apply_transfer_filters(transfer_query, filters, db)
 
