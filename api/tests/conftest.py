@@ -86,7 +86,7 @@ def data_dir(tmp_path):
         {"competition_id": "ES1", "name": "LaLiga", "country_name": "Spain"},
     ])
 
-    # players.csv
+    # players.csv — includes empty player_id (should be skipped)
     write_csv(tmp_path / "players.csv", [
         "player_id", "name", "date_of_birth", "position", "sub_position",
         "country_of_citizenship", "url",
@@ -103,55 +103,99 @@ def data_dir(tmp_path):
         {"player_id": "400", "name": "Player Four", "date_of_birth": "",
          "position": "", "sub_position": "",
          "country_of_citizenship": "", "url": ""},
+        # Empty player_id — should be skipped silently
+        {"player_id": "", "name": "No ID Player", "date_of_birth": "",
+         "position": "", "sub_position": "",
+         "country_of_citizenship": "", "url": ""},
     ])
 
-    # clubs.csv
+    # clubs.csv — includes Swansea (country override) and a club with unknown competition
     write_csv(tmp_path / "clubs.csv", [
         "club_id", "name", "domestic_competition_id", "url",
     ], [
         {"club_id": "10", "name": "Club A", "domestic_competition_id": "GB1", "url": "/club-a"},
         {"club_id": "20", "name": "Club B", "domestic_competition_id": "ES1", "url": "/club-b"},
         {"club_id": "30", "name": "Club C", "domestic_competition_id": "GB1", "url": "/club-c"},
+        # Country override — Swansea City is Welsh but plays in England
+        {"club_id": "40", "name": "Swansea City", "domestic_competition_id": "GB1", "url": "/swansea"},
+        # Unknown competition — should fall back to "Other"
+        {"club_id": "50", "name": "Mystery Club", "domestic_competition_id": "XX9", "url": "/mystery"},
+        # Empty club_id — should be skipped
+        {"club_id": "", "name": "No ID Club", "domestic_competition_id": "GB1", "url": ""},
     ])
 
-    # transfers.csv
+    # transfers.csv — covers all skip paths
     write_csv(tmp_path / "transfers.csv", [
         "player_id", "transfer_date", "transfer_season", "from_club_id", "to_club_id",
         "from_club_name", "to_club_name", "transfer_fee", "market_value_in_eur", "player_name",
     ], [
-        # Paid transfer
+        # Paid transfer (valid)
         {"player_id": "100", "transfer_date": "2023-07-01", "transfer_season": "23/24",
          "from_club_id": "10", "to_club_id": "20", "from_club_name": "Club A",
          "to_club_name": "Club B", "transfer_fee": "50000000.000",
          "market_value_in_eur": "60000000.000", "player_name": "Player One"},
-        # Free transfer
+        # Free transfer (valid)
         {"player_id": "200", "transfer_date": "2024-01-15", "transfer_season": "23/24",
          "from_club_id": "20", "to_club_id": "30", "from_club_name": "Club B",
          "to_club_name": "Club C", "transfer_fee": "0.000",
          "market_value_in_eur": "10000000.000", "player_name": "Player Two"},
-        # Undisclosed fee
+        # Undisclosed fee (valid)
         {"player_id": "300", "transfer_date": "2023-08-15", "transfer_season": "23/24",
          "from_club_id": "30", "to_club_id": "10", "from_club_name": "Club C",
          "to_club_name": "Club A", "transfer_fee": "",
          "market_value_in_eur": "5000000.000", "player_name": "Player Three"},
-        # Unknown player (should be skipped)
+        # Unknown player — should be skipped
         {"player_id": "999", "transfer_date": "2023-07-01", "transfer_season": "23/24",
          "from_club_id": "10", "to_club_id": "20", "from_club_name": "Club A",
          "to_club_name": "Club B", "transfer_fee": "1000000.000",
          "market_value_in_eur": "", "player_name": "Unknown Player"},
+        # Unknown from_club — should be skipped
+        {"player_id": "100", "transfer_date": "2023-09-01", "transfer_season": "23/24",
+         "from_club_id": "9999", "to_club_id": "20", "from_club_name": "Ghost Club",
+         "to_club_name": "Club B", "transfer_fee": "2000000.000",
+         "market_value_in_eur": "", "player_name": "Player One"},
+        # Unknown to_club — should be skipped
+        {"player_id": "100", "transfer_date": "2023-10-01", "transfer_season": "23/24",
+         "from_club_id": "10", "to_club_id": "9999", "from_club_name": "Club A",
+         "to_club_name": "Ghost Club", "transfer_fee": "3000000.000",
+         "market_value_in_eur": "", "player_name": "Player One"},
+        # Empty player_id — should be skipped
+        {"player_id": "", "transfer_date": "2023-07-01", "transfer_season": "23/24",
+         "from_club_id": "10", "to_club_id": "20", "from_club_name": "Club A",
+         "to_club_name": "Club B", "transfer_fee": "1000000.000",
+         "market_value_in_eur": "", "player_name": ""},
+        # Empty from_club_id — should be skipped
+        {"player_id": "200", "transfer_date": "2023-07-01", "transfer_season": "23/24",
+         "from_club_id": "", "to_club_id": "20", "from_club_name": "",
+         "to_club_name": "Club B", "transfer_fee": "1000000.000",
+         "market_value_in_eur": "", "player_name": "Player Two"},
+        # Missing date but valid season — derives window from season (Summer)
+        {"player_id": "200", "transfer_date": "", "transfer_season": "22/23",
+         "from_club_id": "20", "to_club_id": "10", "from_club_name": "Club B",
+         "to_club_name": "Club A", "transfer_fee": "500000.000",
+         "market_value_in_eur": "", "player_name": "Player Two"},
+        # Missing both date and season — should be skipped (no window derivable)
+        {"player_id": "300", "transfer_date": "", "transfer_season": "",
+         "from_club_id": "30", "to_club_id": "20", "from_club_name": "Club C",
+         "to_club_name": "Club B", "transfer_fee": "100000.000",
+         "market_value_in_eur": "", "player_name": "Player Three"},
     ])
 
-    # player_valuations.csv
+    # player_valuations.csv — covers all skip paths
     write_csv(tmp_path / "player_valuations.csv", [
         "player_id", "date", "market_value_in_eur",
     ], [
         {"player_id": "100", "date": "2023-06-01", "market_value_in_eur": "60000000.0"},
         {"player_id": "100", "date": "2024-01-01", "market_value_in_eur": "55000000.0"},
         {"player_id": "200", "date": "2023-06-01", "market_value_in_eur": "10000000.0"},
-        # Missing valuation (should be skipped)
+        # Missing value — should be skipped
         {"player_id": "200", "date": "2024-01-01", "market_value_in_eur": ""},
-        # Unknown player (should be skipped)
+        # Unknown player — should be skipped
         {"player_id": "999", "date": "2023-06-01", "market_value_in_eur": "5000000.0"},
+        # Missing date — should be skipped
+        {"player_id": "100", "date": "", "market_value_in_eur": "70000000.0"},
+        # Empty player_id — should be skipped
+        {"player_id": "", "date": "2023-06-01", "market_value_in_eur": "1000000.0"},
     ])
 
     return tmp_path
