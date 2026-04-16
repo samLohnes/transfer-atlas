@@ -142,6 +142,7 @@ def get_country_detail(
     transfer_query = (
         db.query(
             Transfer.id,
+            Player.id.label("player_id"),
             Player.name.label("player_name"),
             Player.transfermarkt_url.label("player_url"),
             FromClub.name.label("from_club_name"),
@@ -231,6 +232,7 @@ def get_country_detail(
             items=[
                 TransferItem(
                     transfer_id=r.id,
+                    player_id=r.player_id,
                     player_name=r.player_name,
                     player_transfermarkt_url=r.player_url,
                     from_club_name=r.from_club_name,
