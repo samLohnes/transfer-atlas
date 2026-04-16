@@ -1,0 +1,73 @@
+# TransferAtlas API — quick recipes for common dev tasks.
+# Run `just` (no args) to list all available recipes.
+
+set dotenv-load := true
+
+# Build a localhost DATABASE_URL from the POSTGRES_* credentials in .env.
+# We can't reuse DATABASE_URL from .env directly because that points at the
+# Docker-internal hostname "db" — fine inside the api container, unreachable
+# from the host where `just` recipes actually run.
+pg_user := env_var_or_default("POSTGRES_USER", "transfer_atlas")
+pg_password := env_var_or_default("POSTGRES_PASSWORD", "change_me_in_production")
+pg_db := env_var_or_default("POSTGRES_DB", "transfer_atlas")
+db_url := "postgresql://" + pg_user + ":" + pg_password + "@localhost:5432/" + pg_db
+
+# Default recipe: show available commands
+default:
+    @just --list
+
+# ---- Setup ----
+
+# Create a venv and install Python dependencies
+setup:
+    python3.13 -m venv .venv
+    .venv/bin/pip install -r requirements.txt
+    @echo "Setup complete. Activate with: source .venv/bin/activate"
+
+# Remove the venv
+clean:
+    rm -rf .venv .pytest_cache __pycache__
+
+# ---- Database ----
+
+# Apply all pending Alembic migrations
+migrate:
+    DATABASE_URL={{db_url}} alembic upgrade head
+
+# Roll back all migrations (destructive — wipes schema)
+migrate-down:
+    DATABASE_URL={{db_url}} alembic downgrade base
+
+# Open a PostgreSQL shell against the running Docker dev database
+db-shell:
+    docker compose -f ../docker-compose.yml exec db psql -U transfer_atlas
+
+# ---- Pipeline ----
+
+# Run the data pipeline (exits early if source commit is unchanged)
+pipeline:
+    DATABASE_URL={{db_url}} python -m pipeline.run
+
+# Force re-run the pipeline even if source data hasn't changed
+pipeline-force:
+    DATABASE_URL={{db_url}} python -m pipeline.run --force
+
+# ---- Testing ----
+
+# Run the full pytest suite
+test:
+    python3 -m pytest tests/ -v
+
+# Run only the end-to-end pipeline tests
+test-e2e:
+    python3 -m pytest tests/test_ingest.py::TestFullPipelineE2E -v
+
+# Run tests matching a pattern, e.g. `just test-k "fee"`
+test-k pattern:
+    python3 -m pytest tests/ -v -k "{{pattern}}"
+
+# ---- Dev server ----
+
+# Run the API locally with hot-reload (bypasses Docker)
+serve:
+    DATABASE_URL={{db_url}} uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
