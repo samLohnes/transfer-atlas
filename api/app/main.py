@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.database import engine
-from app.routers import clubs, countries, filters, flows, metadata
+from app.routers import clubs, countries, filters, flows, metadata, players
 
 app = FastAPI(title="TransferAtlas API", version="0.1.0")
 
@@ -22,6 +22,7 @@ app.include_router(countries.router)
 app.include_router(flows.router)
 app.include_router(clubs.router)
 app.include_router(filters.router)
+app.include_router(players.router)
 
 
 @app.get("/api/v1/health")

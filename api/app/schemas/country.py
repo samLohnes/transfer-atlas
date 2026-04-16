@@ -42,6 +42,7 @@ class TransferItem(BaseModel):
     """An individual transfer record."""
 
     transfer_id: int
+    player_id: int
     player_name: str
     player_transfermarkt_url: str | None
     from_club_name: str
