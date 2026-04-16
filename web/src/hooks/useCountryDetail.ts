@@ -6,6 +6,7 @@ import type { CountryDetailResponse } from "@/types/api";
 interface UseCountryDetailOptions {
   countryId: number | null;
   counterpartCountryId?: number | null;
+  direction?: string | null;
   filters: FilterState;
   sortBy: string;
   sortOrder: string;
@@ -23,6 +24,7 @@ interface UseCountryDetailResult {
 export function useCountryDetail({
   countryId,
   counterpartCountryId,
+  direction,
   filters,
   sortBy,
   sortOrder,
@@ -42,7 +44,7 @@ export function useCountryDetail({
 
     setIsLoading(true);
     setError(null);
-    fetchCountryDetail(countryId, filters, { sortBy, sortOrder, page, pageSize: 20 }, counterpartCountryId)
+    fetchCountryDetail(countryId, filters, { sortBy, sortOrder, page, pageSize: 20 }, counterpartCountryId, direction)
       .then(setData)
       .catch((err) => {
         console.error("Failed to fetch country detail:", err);
@@ -53,6 +55,7 @@ export function useCountryDetail({
   }, [
     countryId,
     counterpartCountryId,
+    direction,
     sortBy,
     sortOrder,
     page,
