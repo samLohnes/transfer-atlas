@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.models import Club, Country, League, Player, PlayerValuation, Transfer
 from pipeline.ingest import (
+    SchemaValidationError,
     ingest_clubs,
     ingest_competitions,
     ingest_players,
@@ -412,3 +413,68 @@ class TestIngestValuations:
             PlayerValuation.valuation_date == date(2023, 6, 1),
         ).first()
         assert updated.valuation_eur == 9_900_000_000  # 99M * 100
+
+
+class TestSchemaValidation:
+    """Verify ingest functions fail fast when upstream CSV schema changes."""
+
+    def test_transfers_missing_required_column_raises(self, seeded_session, data_dir):
+        """Removing a required column from transfers.csv raises SchemaValidationError."""
+        from tests.conftest import write_csv
+        # Rewrite without `transfer_fee` — should fail fast
+        write_csv(data_dir / "transfers.csv", [
+            "player_id", "transfer_date", "transfer_season",
+            "from_club_id", "to_club_id",
+        ], [
+            {"player_id": "100", "transfer_date": "2023-07-01",
+             "transfer_season": "23/24", "from_club_id": "10", "to_club_id": "20"},
+        ])
+        with pytest.raises(SchemaValidationError, match="transfer_fee"):
+            ingest_transfers(seeded_session, data_dir)
+
+    def test_valuations_missing_required_column_raises(self, seeded_session, data_dir):
+        """Removing a required column from player_valuations.csv raises SchemaValidationError."""
+        from tests.conftest import write_csv
+        write_csv(data_dir / "player_valuations.csv", [
+            "player_id", "date",  # missing market_value_in_eur
+        ], [
+            {"player_id": "100", "date": "2023-06-01"},
+        ])
+        with pytest.raises(SchemaValidationError, match="market_value_in_eur"):
+            ingest_valuations(seeded_session, data_dir)
+
+    def test_players_missing_required_column_raises(self, db_session, data_dir):
+        """Removing a required column from players.csv raises SchemaValidationError."""
+        from tests.conftest import write_csv
+        write_csv(data_dir / "players.csv", [
+            "player_id", "name",  # missing several required columns
+        ], [
+            {"player_id": "100", "name": "Player One"},
+        ])
+        with pytest.raises(SchemaValidationError):
+            ingest_players(db_session, data_dir)
+
+    def test_extra_column_warns_but_succeeds(self, seeded_session, data_dir, caplog):
+        """Unexpected new columns log a warning but don't fail the ingest."""
+        from tests.conftest import write_csv
+        import logging
+        # Add an unexpected column to player_valuations
+        write_csv(data_dir / "player_valuations.csv", [
+            "player_id", "date", "market_value_in_eur", "new_upstream_field",
+        ], [
+            {"player_id": "100", "date": "2023-06-01",
+             "market_value_in_eur": "60000000.0", "new_upstream_field": "foo"},
+        ])
+        with caplog.at_level(logging.WARNING):
+            count = ingest_valuations(seeded_session, data_dir)
+        assert count == 1
+        assert any("new_upstream_field" in rec.message for rec in caplog.records)
+
+    def test_valid_schema_passes_silently(self, seeded_session, data_dir, caplog):
+        """When all required columns are present and nothing unexpected, no warnings."""
+        import logging
+        with caplog.at_level(logging.WARNING):
+            ingest_transfers(seeded_session, data_dir)
+        # No warnings about missing or unexpected columns
+        schema_warnings = [r for r in caplog.records if "column" in r.message.lower()]
+        assert schema_warnings == []
