@@ -130,14 +130,36 @@ REQUIRED_COLUMNS: dict[str, set[str]] = {
 }
 
 KNOWN_COLUMNS: dict[str, set[str]] = {
-    "competitions.csv": REQUIRED_COLUMNS["competitions.csv"],
-    "players.csv": REQUIRED_COLUMNS["players.csv"],
-    "clubs.csv": REQUIRED_COLUMNS["clubs.csv"],
-    # Real transfers.csv also has display-name columns and a market value we don't ingest
-    "transfers.csv": REQUIRED_COLUMNS["transfers.csv"] | {
-        "from_club_name", "to_club_name", "market_value_in_eur", "player_name",
+    "competitions.csv": {
+        "competition_id", "competition_code", "name", "sub_type", "type",
+        "country_id", "country_name", "domestic_league_code", "confederation",
+        "total_clubs", "url",
     },
-    "player_valuations.csv": REQUIRED_COLUMNS["player_valuations.csv"],
+    "players.csv": {
+        "player_id", "first_name", "last_name", "name", "last_season",
+        "current_club_id", "player_code", "country_of_birth", "city_of_birth",
+        "country_of_citizenship", "date_of_birth", "sub_position", "position",
+        "foot", "height_in_cm", "contract_expiration_date", "agent_name",
+        "image_url", "international_caps", "international_goals",
+        "current_national_team_id", "url", "current_club_domestic_competition_id",
+        "current_club_name", "market_value_in_eur", "highest_market_value_in_eur",
+    },
+    "clubs.csv": {
+        "club_id", "club_code", "name", "domestic_competition_id",
+        "total_market_value", "squad_size", "average_age", "foreigners_number",
+        "foreigners_percentage", "national_team_players", "stadium_name",
+        "stadium_seats", "net_transfer_record", "coach_name", "last_season",
+        "filename", "url",
+    },
+    "transfers.csv": {
+        "player_id", "transfer_date", "transfer_season", "from_club_id",
+        "to_club_id", "from_club_name", "to_club_name", "transfer_fee",
+        "market_value_in_eur", "player_name",
+    },
+    "player_valuations.csv": {
+        "player_id", "date", "market_value_in_eur", "current_club_name",
+        "current_club_id", "player_club_domestic_competition_id",
+    },
 }
 
 
