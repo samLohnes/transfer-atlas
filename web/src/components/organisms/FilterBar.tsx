@@ -3,6 +3,7 @@ import { ChevronDown } from "lucide-react";
 import { useFilters } from "@/hooks/useFilters";
 import { useDebounce } from "@/hooks/useDebounce";
 import { formatFee } from "@/lib/format";
+import { DualRangeSlider } from "@/components/atoms/DualRangeSlider";
 import type { PositionGroup } from "@/types/filter";
 
 const POSITION_GROUPS: { key: PositionGroup; label: string; active: string; inactive: string }[] = [
@@ -50,7 +51,7 @@ function FilterPopover({
   }, [isOpen, onClose]);
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative shrink-0">
       <button
         onClick={onToggle}
         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 border ${
@@ -196,39 +197,41 @@ export const FilterBar = memo(function FilterBar() {
   const windowEndLabel = availableWindows[windowRange[1]]?.value;
 
   return (
-    <div className="h-12 bg-[#0e1f16]/60 backdrop-blur-lg border-b border-white/[0.04] flex items-center gap-3 px-5 shrink-0 relative z-30 noise">
+    <div className="h-12 bg-[#0e1f16]/60 backdrop-blur-lg border-b border-white/[0.04] flex items-center gap-2 px-5 shrink-0 relative z-30 noise">
 
-      {/* Time range slider — always visible (hero control) */}
-      <div className="flex items-center gap-3 flex-1 min-w-0 max-w-[500px]">
-        <span className="text-[9px] font-medium uppercase tracking-[0.1em] text-[#6b8a78] shrink-0">Window</span>
-        <div className="flex items-center gap-1.5 flex-1 min-w-0">
-          <span className="font-data text-[10px] text-[#4ade80]/60 tabular-nums shrink-0 w-7 text-right">
-            {windowStartLabel ? abbreviateWindow(windowStartLabel) : ""}
-          </span>
-          <input
-            type="range"
+      {/* Window popover */}
+      <FilterPopover
+        label="Window"
+        summary={windowStartLabel && windowEndLabel
+          ? `${abbreviateWindow(windowStartLabel)}–${abbreviateWindow(windowEndLabel)}`
+          : "All"}
+        isActive={windowRange[0] > 0 || windowRange[1] < availableWindows.length - 1}
+        isOpen={openPopover === "window"}
+        onToggle={() => setOpenPopover(openPopover === "window" ? null : "window")}
+        onClose={() => setOpenPopover(null)}
+      >
+        <div className="w-[260px]">
+          <div className="flex justify-between items-center mb-3">
+            <span className="font-data text-[13px] text-[#e8f0ec] tabular-nums">
+              {windowStartLabel ? abbreviateWindow(windowStartLabel) : ""}
+            </span>
+            <span className="text-[#6b8a78] text-[11px]">to</span>
+            <span className="font-data text-[13px] text-[#e8f0ec] tabular-nums">
+              {windowEndLabel ? abbreviateWindow(windowEndLabel) : ""}
+            </span>
+          </div>
+          <DualRangeSlider
             min={0}
             max={Math.max(availableWindows.length - 1, 0)}
-            value={windowRange[0]}
-            onChange={(e) => setWindowRange([Math.min(Number(e.target.value), windowRange[1]), windowRange[1]])}
-            className="flex-1 h-1"
+            valueLow={windowRange[0]}
+            valueHigh={windowRange[1]}
+            onChange={(low, high) => setWindowRange([low, high])}
           />
-          <input
-            type="range"
-            min={0}
-            max={Math.max(availableWindows.length - 1, 0)}
-            value={windowRange[1]}
-            onChange={(e) => setWindowRange([windowRange[0], Math.max(Number(e.target.value), windowRange[0])])}
-            className="flex-1 h-1"
-          />
-          <span className="font-data text-[10px] text-[#4ade80]/60 tabular-nums shrink-0 w-7">
-            {windowEndLabel ? abbreviateWindow(windowEndLabel) : ""}
-          </span>
         </div>
-      </div>
+      </FilterPopover>
 
       {/* Separator */}
-      <div className="w-px h-6 bg-white/[0.06]" />
+      <div className="w-px h-6 bg-white/[0.06] shrink-0" />
 
       {/* Transfer type popover */}
       <FilterPopover
@@ -285,24 +288,13 @@ export const FilterBar = memo(function FilterBar() {
               isMax
             />
           </div>
-          <div className="space-y-3">
-            <div>
-              <span className="text-[9px] text-[#6b8a78] uppercase tracking-widest">Min</span>
-              <input
-                type="range" min={0} max={100} value={feeRange[0]}
-                onChange={(e) => setFeeRange([Math.min(Number(e.target.value), feeRange[1]), feeRange[1]])}
-                className="w-full h-1 mt-1"
-              />
-            </div>
-            <div>
-              <span className="text-[9px] text-[#6b8a78] uppercase tracking-widest">Max</span>
-              <input
-                type="range" min={0} max={100} value={feeRange[1]}
-                onChange={(e) => setFeeRange([feeRange[0], Math.max(Number(e.target.value), feeRange[0])])}
-                className="w-full h-1 mt-1"
-              />
-            </div>
-          </div>
+          <DualRangeSlider
+            min={0}
+            max={100}
+            valueLow={feeRange[0]}
+            valueHigh={feeRange[1]}
+            onChange={(low, high) => setFeeRange([low, high])}
+          />
         </div>
       </FilterPopover>
 
@@ -358,24 +350,13 @@ export const FilterBar = memo(function FilterBar() {
             <span className="text-[#6b8a78] text-[11px]">to</span>
             <span className="font-data text-[14px] text-[#e8f0ec] tabular-nums">{ageRange[1]}</span>
           </div>
-          <div className="space-y-3">
-            <div>
-              <span className="text-[9px] text-[#6b8a78] uppercase tracking-widest">Min</span>
-              <input
-                type="range" min={15} max={40} value={ageRange[0]}
-                onChange={(e) => setAgeRange([Math.min(Number(e.target.value), ageRange[1]), ageRange[1]])}
-                className="w-full h-1 mt-1"
-              />
-            </div>
-            <div>
-              <span className="text-[9px] text-[#6b8a78] uppercase tracking-widest">Max</span>
-              <input
-                type="range" min={15} max={40} value={ageRange[1]}
-                onChange={(e) => setAgeRange([ageRange[0], Math.max(Number(e.target.value), ageRange[0])])}
-                className="w-full h-1 mt-1"
-              />
-            </div>
-          </div>
+          <DualRangeSlider
+            min={15}
+            max={40}
+            valueLow={ageRange[0]}
+            valueHigh={ageRange[1]}
+            onChange={(low, high) => setAgeRange([low, high])}
+          />
         </div>
       </FilterPopover>
 
