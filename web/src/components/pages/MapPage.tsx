@@ -2,35 +2,39 @@ import { useCallback, useState } from "react";
 import { useFilters } from "@/hooks/useFilters";
 import { useMapData } from "@/hooks/useMapData";
 import { MapView } from "@/components/organisms/MapView";
-import { DetailPanel } from "@/components/organisms/DetailPanel";
+import { CountryPanel } from "@/components/organisms/CountryPanel";
+import { FlowPanel } from "@/components/organisms/FlowPanel";
 import { FilterBar } from "@/components/organisms/FilterBar";
 import { EmptyState } from "@/components/molecules/EmptyState";
 import { ErrorState } from "@/components/molecules/ErrorState";
+
+interface ArcSelection {
+  spenderId: number;
+  spenderName: string;
+  receiverId: number;
+  receiverName: string;
+}
 
 /** Map view page — the hero view of TransferAtlas. */
 export function MapPage() {
   const { filters } = useFilters();
   const { countries, flows, countrySummaries, isLoading, error, retry } = useMapData(filters);
   const [selectedCountryId, setSelectedCountryId] = useState<number | null>(null);
-  const [counterpartCountryId, setCounterpartCountryId] = useState<number | null>(null);
-  const [counterpartCountryName, setCounterpartCountryName] = useState<string | null>(null);
+  const [selectedArc, setSelectedArc] = useState<ArcSelection | null>(null);
 
   const handleSelectCountry = useCallback((id: number | null) => {
     setSelectedCountryId(id);
-    setCounterpartCountryId(null);
-    setCounterpartCountryName(null);
+    setSelectedArc(null);
   }, []);
 
-  const handleSelectArc = useCallback((spenderId: number, receiverId: number, _spenderName: string, receiverName: string) => {
-    setSelectedCountryId(spenderId);
-    setCounterpartCountryId(receiverId);
-    setCounterpartCountryName(receiverName);
+  const handleSelectArc = useCallback((spenderId: number, receiverId: number, spenderName: string, receiverName: string) => {
+    setSelectedArc({ spenderId, spenderName, receiverId, receiverName });
+    setSelectedCountryId(null);
   }, []);
 
   const handleClosePanel = useCallback(() => {
     setSelectedCountryId(null);
-    setCounterpartCountryId(null);
-    setCounterpartCountryName(null);
+    setSelectedArc(null);
   }, []);
 
   return (
@@ -61,12 +65,21 @@ export function MapPage() {
         </div>
       </div>
 
-      <DetailPanel
-        countryId={selectedCountryId}
-        counterpartCountryId={counterpartCountryId}
-        counterpartCountryName={counterpartCountryName}
-        onClose={handleClosePanel}
-      />
+      {/* Country detail panel (node click) */}
+      {selectedCountryId !== null && (
+        <CountryPanel countryId={selectedCountryId} onClose={handleClosePanel} />
+      )}
+
+      {/* Flow detail panel (arc click) */}
+      {selectedArc !== null && (
+        <FlowPanel
+          countryId={selectedArc.spenderId}
+          countryName={selectedArc.spenderName}
+          counterpartCountryId={selectedArc.receiverId}
+          counterpartCountryName={selectedArc.receiverName}
+          onClose={handleClosePanel}
+        />
+      )}
     </div>
   );
 }
