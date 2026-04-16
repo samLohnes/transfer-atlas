@@ -55,6 +55,7 @@ export function useMapData(filters: FilterState): MapData {
     filters.positionGroups?.join(","),
     filters.ageMin,
     filters.ageMax,
+    filters.countryIds.join(","),
   ]);
 
   const retry = useCallback(() => setFetchKey((k) => k + 1), []);

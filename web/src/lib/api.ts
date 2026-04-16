@@ -24,6 +24,7 @@ function filterParams(filters: FilterState): URLSearchParams {
   if (filters.positionGroups.length > 0) params.set("position_group", filters.positionGroups.join(","));
   if (filters.ageMin !== null) params.set("age_min", String(filters.ageMin));
   if (filters.ageMax !== null) params.set("age_max", String(filters.ageMax));
+  if (filters.countryIds.length > 0) params.set("country_ids", filters.countryIds.join(","));
 
   return params;
 }

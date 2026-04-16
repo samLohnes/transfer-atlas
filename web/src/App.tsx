@@ -8,23 +8,28 @@ import {
   FilterContext,
   filterReducer,
 } from "@/hooks/useFilters";
-import { fetchWindows } from "@/lib/api";
+import { fetchWindows, fetchCountries } from "@/lib/api";
 import type { TransferWindow } from "@/types/filter";
+import type { Country } from "@/types/country";
 
 function App() {
   const [filters, dispatch] = useReducer(filterReducer, DEFAULT_FILTERS);
   const [availableWindows, setAvailableWindows] = useState<TransferWindow[]>([]);
+  const [availableCountries, setAvailableCountries] = useState<Country[]>([]);
 
   useEffect(() => {
     fetchWindows()
       .then((res) => setAvailableWindows(res.windows))
       .catch(() => {});
+    fetchCountries()
+      .then((res) => setAvailableCountries(res.countries))
+      .catch(() => {});
   }, []);
 
   return (
-    <FilterContext value={{ filters, dispatch, availableWindows }}>
+    <FilterContext value={{ filters, dispatch, availableWindows, availableCountries }}>
       <BrowserRouter>
-        <div className="flex flex-col h-screen bg-[#0f1a14] text-[#e8f0ec]">
+        <div className="flex flex-col h-screen bg-[#0a1410] text-[#e8f0ec]">
           <NavBar />
           <Routes>
             <Route path="/" element={<MapPage />} />
