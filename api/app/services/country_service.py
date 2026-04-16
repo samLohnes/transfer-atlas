@@ -178,9 +178,14 @@ def get_country_detail(
                 and_(Transfer.from_club_id.in_(counterpart_club_ids), Transfer.to_club_id.in_(club_ids)),
             ))
     else:
-        transfer_query = transfer_query.filter(
-            (Transfer.from_club_id.in_(club_ids)) | (Transfer.to_club_id.in_(club_ids))
-        )
+        if direction == "buying":
+            transfer_query = transfer_query.filter(Transfer.to_club_id.in_(club_ids))
+        elif direction == "selling":
+            transfer_query = transfer_query.filter(Transfer.from_club_id.in_(club_ids))
+        else:
+            transfer_query = transfer_query.filter(
+                (Transfer.from_club_id.in_(club_ids)) | (Transfer.to_club_id.in_(club_ids))
+            )
 
     transfer_query = apply_transfer_filters(transfer_query, filters, db)
 
