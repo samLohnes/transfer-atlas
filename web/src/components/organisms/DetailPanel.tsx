@@ -13,6 +13,8 @@ import type { TopClub } from "@/types/club";
 
 interface DetailPanelProps {
   countryId: number | null;
+  counterpartCountryId?: number | null;
+  counterpartCountryName?: string | null;
   onClose: () => void;
 }
 
@@ -26,7 +28,7 @@ const POS_STYLE: Record<string, string> = {
 };
 
 /** Sliding country detail panel with refined glass treatment. */
-export function DetailPanel({ countryId, onClose }: DetailPanelProps) {
+export function DetailPanel({ countryId, counterpartCountryId, counterpartCountryName, onClose }: DetailPanelProps) {
   const navigate = useNavigate();
   const { filters } = useFilters();
   const [sortBy, setSortBy] = useState<SortField>("fee");
@@ -35,7 +37,7 @@ export function DetailPanel({ countryId, onClose }: DetailPanelProps) {
 
   useEffect(() => { setPage(1); }, [countryId, filters]);
 
-  const { data, isLoading, error, retry } = useCountryDetail({ countryId, filters, sortBy, sortOrder, page });
+  const { data, isLoading, error, retry } = useCountryDetail({ countryId, counterpartCountryId, filters, sortBy, sortOrder, page });
 
   const handleSort = useCallback((field: SortField) => {
     if (sortBy === field) {
@@ -89,7 +91,7 @@ export function DetailPanel({ countryId, onClose }: DetailPanelProps) {
 
   return (
     <div
-      className={`shrink-0 border-l border-white/[0.06] bg-[#0c1a12]/95 backdrop-blur-xl overflow-y-auto transition-all duration-300 ease-out ${
+      className={`shrink-0 border-l border-white/[0.06] bg-[#0c1a12] overflow-y-auto transition-all duration-300 ease-out z-40 ${
         isOpen ? "w-[35vw] min-w-[400px] max-w-[600px]" : "w-0 min-w-0 max-w-0"
       }`}
     >
@@ -116,7 +118,12 @@ export function DetailPanel({ countryId, onClose }: DetailPanelProps) {
                 <div className="flex items-center gap-3 mb-2 pr-8">
                   <span className="text-3xl">{getFlag(data.country.iso_code)}</span>
                   <div>
-                    <h2 className="text-lg font-semibold text-[#e8f0ec] tracking-tight">{data.country.name}</h2>
+                    <h2 className="text-lg font-semibold text-[#e8f0ec] tracking-tight">
+                      {data.country.name}
+                      {counterpartCountryName && (
+                        <span className="text-[#6b8a78]"> ↔ {counterpartCountryName}</span>
+                      )}
+                    </h2>
                     <Badge variant={data.country.net_spend_eur > 0 ? "danger" : "success"}>
                       {data.country.net_spend_eur > 0
                         ? `Net Spend: ${formatFee(data.country.net_spend_eur)}`

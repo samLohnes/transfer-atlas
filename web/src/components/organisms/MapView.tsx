@@ -15,6 +15,7 @@ interface MapViewProps {
   isLoading: boolean;
   selectedCountryId: number | null;
   onSelectCountry: (id: number | null) => void;
+  onSelectArc: (spenderCountryId: number, receiverCountryId: number, spenderName: string, receiverName: string) => void;
 }
 
 const INITIAL_VIEW_STATE = {
@@ -35,6 +36,7 @@ export function MapView({
   isLoading,
   selectedCountryId: _selectedCountryId,
   onSelectCountry,
+  onSelectArc,
 }: MapViewProps) {
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -192,6 +194,8 @@ export function MapView({
           fromPos: [spender.longitude, spender.latitude] as [number, number],
           toPos: [receiver.longitude, receiver.latitude] as [number, number],
           fee: Math.abs(f.netFee),
+          spenderId,
+          receiverId,
           spenderName,
           receiverName,
           totalTransfers: f.totalTransfers,
@@ -199,7 +203,8 @@ export function MapView({
       })
       .filter(Boolean) as {
         fromPos: [number, number]; toPos: [number, number];
-        fee: number; spenderName: string; receiverName: string; totalTransfers: number;
+        fee: number; spenderId: number; receiverId: number;
+        spenderName: string; receiverName: string; totalTransfers: number;
       }[];
 
     const maxLogFee = Math.log10(Math.max(maxNetFee, 1));
@@ -233,13 +238,18 @@ export function MapView({
           setTooltip(null);
         }
       },
+      onClick: (info: { object?: (typeof arcData)[0] }) => {
+        if (info.object) {
+          onSelectArc(info.object.spenderId, info.object.receiverId, info.object.spenderName, info.object.receiverName);
+        }
+      },
       updateTriggers: {
         getWidth: [maxNetFee],
       },
     });
 
     return [arcLayer, scatterLayer];
-  }, [countries, flows, countrySummaries, countryTransferTotals, maxVolume, maxAbsNetSpend, maxFlowFee, countryById, summaryById, onSelectCountry]);
+  }, [countries, flows, countrySummaries, countryTransferTotals, maxVolume, maxAbsNetSpend, maxFlowFee, countryById, summaryById, onSelectCountry, onSelectArc]);
 
   return (
     <div ref={containerRef} className="relative w-full h-full">
