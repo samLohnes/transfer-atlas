@@ -18,8 +18,6 @@ interface NetworkGraphProps {
   onCollapseCountry: (countryId: number) => void;
   onSelectCountry: (countryId: number) => void;
   onSelectClub: (clubId: number) => void;
-  /** Incremented to trigger a zoomToFit (e.g. when sidebar opens/closes). */
-  fitKey?: number;
 }
 
 interface GraphNode {
@@ -57,11 +55,12 @@ export function NetworkGraph({
   onCollapseCountry,
   onSelectCountry,
   onSelectClub,
-  fitKey,
 }: NetworkGraphProps) {
   const graphRef = useRef<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
+  const containerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; content: string } | null>(null);
   const mousePos = useRef({ x: 0, y: 0 });
+  const lastContainerWidth = useRef(0);
 
   // Track mouse position globally
   useEffect(() => {
@@ -70,6 +69,29 @@ export function NetworkGraph({
     }
     window.addEventListener("mousemove", onMove);
     return () => window.removeEventListener("mousemove", onMove);
+  }, []);
+
+  // Watch container size — zoomToFit after resize settles (debounced)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    lastContainerWidth.current = el.clientWidth;
+    let debounceTimer: ReturnType<typeof setTimeout>;
+
+    const obs = new ResizeObserver((entries) => {
+      const newWidth = entries[0].contentRect.width;
+      if (newWidth > 0 && Math.abs(newWidth - lastContainerWidth.current) > 10) {
+        lastContainerWidth.current = newWidth;
+        // Debounce — only fire zoomToFit once the resize stops (transition ended)
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          const fg = graphRef.current;
+          if (fg) fg.zoomToFit(0, 50); // duration 0 = instant snap
+        }, 50);
+      }
+    });
+    obs.observe(el);
+    return () => { obs.disconnect(); clearTimeout(debounceTimer); };
   }, []);
 
   // Build graph data
@@ -159,15 +181,6 @@ export function NetworkGraph({
 
     return { nodes, links };
   }, [networkData, expandedData, expandedCountries]);
-
-  // Re-fit when sidebar opens/closes (fitKey changes)
-  useEffect(() => {
-    const fg = graphRef.current;
-    if (!fg || fitKey === undefined) return;
-    // Delay past the 300ms CSS transition so the container has finished resizing
-    const timer = setTimeout(() => fg.zoomToFit(400, 40), 400);
-    return () => clearTimeout(timer);
-  }, [fitKey]);
 
   // Configure forces when graph data changes
   useEffect(() => {
@@ -277,7 +290,7 @@ export function NetworkGraph({
   }
 
   return (
-    <div style={{ width: "100%", height: "100%" }}>
+    <div ref={containerRef} style={{ width: "100%", height: "100%" }}>
       <ForceGraph2D
         ref={graphRef}
         graphData={{ nodes, links }}

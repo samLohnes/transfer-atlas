@@ -33,7 +33,6 @@ export function NetworkGraphPage() {
   } = useClubNetwork(clubId, filters);
 
   const [selection, setSelection] = useState<NetworkDetailPanelProps["selection"]>(null);
-  const [fitKey, setFitKey] = useState(0);
 
   // Clear selection when club changes
   useEffect(() => { setSelection(null); }, [clubId]);
@@ -50,7 +49,6 @@ export function NetworkGraphPage() {
       edge,
       expandedData: expanded,
     });
-    setFitKey((k) => k + 1);
   }, [networkData, expandedData]);
 
   // Update the country selection when expanded data arrives
@@ -72,20 +70,13 @@ export function NetworkGraphPage() {
           clubName: clubEdge.club_name,
           clubEdge,
         });
-        setFitKey((k) => k + 1);
         return;
       }
     }
   }, [expandedData]);
 
-  const handleCollapseCountry = useCallback((countryId: number) => {
-    collapseCountry(countryId);
-    setFitKey((k) => k + 1);
-  }, [collapseCountry]);
-
   const handleClosePanel = useCallback(() => {
     setSelection(null);
-    setFitKey((k) => k + 1);
   }, []);
 
   const centerClubName = networkData?.center_club.club_name ?? "";
@@ -109,15 +100,13 @@ export function NetworkGraphPage() {
             error={error}
             onRetry={retry}
             onExpandCountry={expandCountry}
-            onCollapseCountry={handleCollapseCountry}
+            onCollapseCountry={collapseCountry}
             onSelectCountry={handleSelectCountry}
             onSelectClub={handleSelectClub}
-            fitKey={fitKey}
           />
         </div>
       </div>
 
-      {/* Always rendered — animates between w-0 and full width */}
       <NetworkDetailPanel
         centerClubName={centerClubName}
         isOpen={isSelectionOpen}
