@@ -128,7 +128,7 @@ function FeeInput({ value, onChange, isMax }: { value: number | null; onChange: 
 
 /** Global filter bar — time slider always visible, other filters as popovers. */
 export const FilterBar = memo(function FilterBar() {
-  const { filters, dispatch, availableWindows } = useFilters();
+  const { filters, dispatch, availableWindows, availableCountries } = useFilters();
   const [openPopover, setOpenPopover] = useState<string | null>(null);
 
   const [windowRange, setWindowRange] = useState<[number, number]>([0, 0]);
@@ -186,6 +186,11 @@ export const FilterBar = memo(function FilterBar() {
     : `${formatFee(feeMinEur * 100)}–${feeMaxEur === null ? "Max" : formatFee(feeMaxEur * 100)}`;
   const posSummary = filters.positionGroups.length === 0 ? "All" : filters.positionGroups.join(", ");
   const ageSummary = ageRange[0] <= 15 && ageRange[1] >= 40 ? "Any" : `${ageRange[0]}–${ageRange[1]}`;
+  const countrySummary = filters.countryIds.length === 0
+    ? "All"
+    : filters.countryIds.length <= 2
+      ? filters.countryIds.map((id) => availableCountries.find((c) => c.id === id)?.name ?? "").join(", ")
+      : `${filters.countryIds.length} selected`;
 
   const windowStartLabel = availableWindows[windowRange[0]]?.value;
   const windowEndLabel = availableWindows[windowRange[1]]?.value;
@@ -371,6 +376,43 @@ export const FilterBar = memo(function FilterBar() {
               />
             </div>
           </div>
+        </div>
+      </FilterPopover>
+
+      {/* Country popover */}
+      <FilterPopover
+        label="Country"
+        summary={countrySummary}
+        isActive={filters.countryIds.length > 0}
+        isOpen={openPopover === "country"}
+        onToggle={() => setOpenPopover(openPopover === "country" ? null : "country")}
+        onClose={() => setOpenPopover(null)}
+      >
+        <div className="max-h-[300px] overflow-y-auto">
+          <div className="text-[11px] text-[#6b8a78] mb-2">Show transfers involving:</div>
+          <div className="space-y-0.5">
+            {availableCountries.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => dispatch({ type: "TOGGLE_COUNTRY_ID", value: c.id })}
+                className={`w-full text-left px-3 py-1.5 rounded-lg text-[13px] transition-all duration-200 ${
+                  filters.countryIds.includes(c.id)
+                    ? "bg-[#4ade80]/15 text-[#4ade80]"
+                    : "text-[#8fa898] hover:bg-white/[0.04] hover:text-[#c5dace]"
+                }`}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+          {filters.countryIds.length > 0 && (
+            <button
+              onClick={() => dispatch({ type: "SET_COUNTRY_IDS", value: [] })}
+              className="text-[11px] text-[#6b8a78] hover:text-[#c5dace] mt-2 transition-colors"
+            >
+              Clear filter
+            </button>
+          )}
         </div>
       </FilterPopover>
     </div>

@@ -20,4 +20,5 @@ export interface FilterState {
   positionGroups: PositionGroup[];
   ageMin: number | null;
   ageMax: number | null;
+  countryIds: number[];
 }
