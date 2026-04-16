@@ -4,17 +4,19 @@ A web-based soccer transfer intelligence tool that visualizes how money flows th
 
 ## What it does
 
-TransferAtlas ingests real transfer data from [Transfermarkt Datasets](https://github.com/dcaribou/transfermarkt-datasets) and presents it through two main views:
+TransferAtlas ingests real transfer data from [Transfermarkt Datasets](https://github.com/dcaribou/transfermarkt-datasets) and presents it through three views:
 
-**Map View** — An interactive geographic map where arc lines between countries represent transfer spending. Arc thickness encodes money volume, and country nodes are colored by net spend position (red for net spenders, green for net receivers). Click a country to open a detail panel showing top buying/selling clubs and a sortable transfer table with links to player profiles.
+**Map View** — An interactive geographic map where arc lines between countries represent transfer spending. Arc thickness encodes money volume, and country nodes are colored by net spend position (red for net spenders, green for net receivers). Click a country or arc to open a detail panel showing top buying/selling clubs and a sortable transfer table. Arc clicks show a country-pair breakdown with a direction toggle.
 
-**Network Graph View** — A force-directed graph centered on a single club, showing its transfer relationships. Country nodes radiate outward and can be expanded to reveal individual club-to-club connections. Click any club to re-center the graph and explore the network.
+**Network Graph View** — A force-directed graph centered on a single club, showing its transfer relationships. Country nodes radiate outward and can be expanded to reveal individual club-to-club connections. Click any node to open a detail sidebar; click the "View network" button to re-center on a different club.
 
-Both views share global filters for time range, transfer type, fee range, player position, player age, and country.
+**Player View** — Search for any player to see their career path as a visual timeline, market value history as a chart with transfer fee markers, and full transfer history table.
+
+All views share global filters for time range, transfer type, fee range, player position, player age, and country.
 
 ## Tech Stack
 
-- **Frontend:** React 19, Vite, TypeScript, Tailwind CSS, deck.gl, MapLibre GL, react-force-graph-2d
+- **Frontend:** React 19, Vite, TypeScript, Tailwind CSS, deck.gl, MapLibre GL, react-force-graph-2d, Recharts
 - **Backend:** Python 3.13, FastAPI, SQLAlchemy, Alembic
 - **Database:** PostgreSQL 15
 - **Infrastructure:** Docker Compose
