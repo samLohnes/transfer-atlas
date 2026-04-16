@@ -12,13 +12,25 @@ export function MapPage() {
   const { filters } = useFilters();
   const { countries, flows, countrySummaries, isLoading, error, retry } = useMapData(filters);
   const [selectedCountryId, setSelectedCountryId] = useState<number | null>(null);
+  const [counterpartCountryId, setCounterpartCountryId] = useState<number | null>(null);
+  const [counterpartCountryName, setCounterpartCountryName] = useState<string | null>(null);
 
   const handleSelectCountry = useCallback((id: number | null) => {
     setSelectedCountryId(id);
+    setCounterpartCountryId(null);
+    setCounterpartCountryName(null);
+  }, []);
+
+  const handleSelectArc = useCallback((spenderId: number, receiverId: number, _spenderName: string, receiverName: string) => {
+    setSelectedCountryId(spenderId);
+    setCounterpartCountryId(receiverId);
+    setCounterpartCountryName(receiverName);
   }, []);
 
   const handleClosePanel = useCallback(() => {
     setSelectedCountryId(null);
+    setCounterpartCountryId(null);
+    setCounterpartCountryName(null);
   }, []);
 
   return (
@@ -44,11 +56,17 @@ export function MapPage() {
             isLoading={isLoading}
             selectedCountryId={selectedCountryId}
             onSelectCountry={handleSelectCountry}
+            onSelectArc={handleSelectArc}
           />
         </div>
       </div>
 
-      <DetailPanel countryId={selectedCountryId} onClose={handleClosePanel} />
+      <DetailPanel
+        countryId={selectedCountryId}
+        counterpartCountryId={counterpartCountryId}
+        counterpartCountryName={counterpartCountryName}
+        onClose={handleClosePanel}
+      />
     </div>
   );
 }

@@ -60,12 +60,14 @@ export async function fetchCountryDetail(
   countryId: number,
   filters: FilterState,
   pagination: { sortBy?: string; sortOrder?: string; page?: number; pageSize?: number } = {},
+  counterpartCountryId?: number | null,
 ): Promise<CountryDetailResponse> {
   const params = filterParams(filters);
   if (pagination.sortBy) params.set("sort_by", pagination.sortBy);
   if (pagination.sortOrder) params.set("sort_order", pagination.sortOrder);
   if (pagination.page) params.set("page", String(pagination.page));
   if (pagination.pageSize) params.set("page_size", String(pagination.pageSize));
+  if (counterpartCountryId) params.set("counterpart_country_id", String(counterpartCountryId));
   return fetchJson<CountryDetailResponse>(buildUrl(`/countries/${countryId}/detail`, params));
 }
 
