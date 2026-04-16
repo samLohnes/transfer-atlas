@@ -25,6 +25,7 @@ function abbreviateWindow(w: string): string {
 function FilterPopover({
   label,
   summary,
+  summaryWidth,
   isActive,
   children,
   isOpen,
@@ -33,6 +34,7 @@ function FilterPopover({
 }: {
   label: string;
   summary: string;
+  summaryWidth?: string;
   isActive: boolean;
   children: React.ReactNode;
   isOpen: boolean;
@@ -63,7 +65,7 @@ function FilterPopover({
         }`}
       >
         <span className="uppercase tracking-[0.08em] text-[9px] text-[#6b8a78]">{label}</span>
-        <span className="font-data tabular-nums">{summary}</span>
+        <span className={`font-data tabular-nums text-center truncate ${summaryWidth ?? "min-w-[48px] max-w-[120px]"}`}>{summary}</span>
         <ChevronDown className={`h-3 w-3 text-[#6b8a78] transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
       </button>
 
@@ -263,6 +265,7 @@ export const FilterBar = memo(function FilterBar() {
       <FilterPopover
         label="Fee"
         summary={feeSummary}
+        summaryWidth="w-[100px]"
         isActive={feeRange[0] > 0 || feeRange[1] < 100}
         isOpen={openPopover === "fee"}
         onToggle={() => setOpenPopover(openPopover === "fee" ? null : "fee")}
