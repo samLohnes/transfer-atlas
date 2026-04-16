@@ -2,6 +2,8 @@
 
 A web-based soccer transfer intelligence tool that visualizes how money flows through club football. This is a project I've wanted to build for a long time, following soccer has been a passion of mine since the 2006 World Cup, and I wanted a way to actually *see* the money move between countries and clubs across transfer windows.
 
+![TransferAtlas map view showing transfer flows between European countries](screenshots/MapViewWithDetails.png)
+
 ## What it does
 
 TransferAtlas ingests real transfer data from [Transfermarkt Datasets](https://github.com/dcaribou/transfermarkt-datasets) and presents it through three views:
@@ -10,7 +12,11 @@ TransferAtlas ingests real transfer data from [Transfermarkt Datasets](https://g
 
 **Network Graph View** — A force-directed graph centered on a single club, showing its transfer relationships. Country nodes radiate outward and can be expanded to reveal individual club-to-club connections. Click any node to open a detail sidebar; click the "View network" button to re-center on a different club.
 
+![Network graph centered on Benfica with expanded country nodes showing individual clubs](screenshots/NetworkViewExpanded.png)
+
 **Player View** — Search for any player to see their career path as a visual timeline, market value history as a chart with transfer fee markers, and full transfer history table.
+
+![Player view showing Kevin De Bruyne's career path, market value chart, and transfer history](screenshots/PlayerView.png)
 
 All views share global filters for time range, transfer type, fee range, player position, player age, and country.
 
@@ -76,4 +82,12 @@ TransferAtlas tracks transfers across 15 leagues in 12 countries:
 - **Brazil:** Série A
 
 The pipeline is designed to run monthly to pick up new transfer data. All monetary values are stored in EUR cents to avoid floating-point issues.
+
+## Data Source & Attribution
+
+All transfer data, player information, club data, and market valuations shown in TransferAtlas originate from [**Transfermarkt**](https://www.transfermarkt.com), the authoritative source for football transfer and market value data. I consume this data via the [Transfermarkt Datasets](https://github.com/dcaribou/transfermarkt-datasets) project by [@dcaribou](https://github.com/dcaribou), which publishes periodic snapshots as CSVs.
+
+TransferAtlas is a **non-commercial personal project** built for learning and as a showcase of data pipeline design and building responsive user interfaces backed by larger datasets. I don't claim ownership of any data shown here — Transfermarkt remains the authoritative source, and player/club references throughout the app deep-link back to Transfermarkt's website.
+
+If you represent Transfermarkt and have concerns about this project, please open a GitHub issue and I'll respond promptly.
 
