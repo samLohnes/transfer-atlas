@@ -1,4 +1,5 @@
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { useFilters } from "@/hooks/useFilters";
 import { useDebounce } from "@/hooks/useDebounce";
 import { formatFee } from "@/lib/format";
@@ -19,9 +20,116 @@ function abbreviateWindow(w: string): string {
   return `${match[1][0]}${match[2].slice(2)}`;
 }
 
-/** Global filter bar with refined glass treatment. */
+/** Popover wrapper — opens below the trigger, closes on outside click. */
+function FilterPopover({
+  label,
+  summary,
+  isActive,
+  children,
+  isOpen,
+  onToggle,
+  onClose,
+}: {
+  label: string;
+  summary: string;
+  isActive: boolean;
+  children: React.ReactNode;
+  isOpen: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [isOpen, onClose]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={onToggle}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 border ${
+          isOpen
+            ? "bg-[#4ade80]/10 text-[#4ade80] border-[#4ade80]/25"
+            : isActive
+              ? "bg-white/[0.04] text-[#c5dace] border-white/[0.08]"
+              : "bg-white/[0.02] text-[#6b8a78] border-white/[0.06] hover:bg-white/[0.04] hover:text-[#c5dace]"
+        }`}
+      >
+        <span className="uppercase tracking-[0.08em] text-[9px] text-[#6b8a78]">{label}</span>
+        <span className="font-data tabular-nums">{summary}</span>
+        <ChevronDown className={`h-3 w-3 text-[#6b8a78] transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-2 z-50 rounded-xl bg-[#0e1f16]/95 backdrop-blur-xl border border-white/[0.08] shadow-[0_16px_48px_rgba(0,0,0,0.5)] p-4 min-w-[240px]">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Inline editable fee value. */
+function FeeInput({ value, onChange, isMax }: { value: number | null; onChange: (eur: number) => void; isMax?: boolean }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState("");
+
+  const display = value === null ? "Max" : formatFee(value * 100);
+
+  function commit() {
+    setEditing(false);
+    const cleaned = text.replace(/[€,\s]/g, "").toLowerCase();
+    if (cleaned === "" || cleaned === "max") {
+      if (isMax) { onChange(0); }
+      return;
+    }
+    let eur = 0;
+    if (cleaned.endsWith("m")) {
+      eur = parseFloat(cleaned) * 1_000_000;
+    } else if (cleaned.endsWith("k")) {
+      eur = parseFloat(cleaned) * 1_000;
+    } else {
+      eur = parseFloat(cleaned);
+    }
+    if (!isNaN(eur) && eur >= 0) onChange(eur);
+  }
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type="text"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
+        placeholder={isMax ? "e.g. 50m" : "e.g. 1m"}
+        className="w-20 bg-white/[0.06] border border-[#4ade80]/30 rounded-md px-2 py-1 text-[12px] font-data text-[#e8f0ec] outline-none tabular-nums"
+      />
+    );
+  }
+
+  return (
+    <button
+      onClick={() => { setEditing(true); setText(""); }}
+      className="font-data text-[12px] text-[#4ade80]/70 tabular-nums hover:text-[#4ade80] cursor-text transition-colors px-2 py-1 rounded-md hover:bg-white/[0.04]"
+      title="Click to type a value (e.g. 50m, 500k)"
+    >
+      {display}
+    </button>
+  );
+}
+
+/** Global filter bar — time slider always visible, other filters as popovers. */
 export const FilterBar = memo(function FilterBar() {
   const { filters, dispatch, availableWindows } = useFilters();
+  const [openPopover, setOpenPopover] = useState<string | null>(null);
 
   const [windowRange, setWindowRange] = useState<[number, number]>([0, 0]);
   const [feeRange, setFeeRange] = useState<[number, number]>([0, 100]);
@@ -44,10 +152,8 @@ export const FilterBar = memo(function FilterBar() {
 
   useEffect(() => {
     if (availableWindows.length === 0) return;
-    const start = availableWindows[debouncedWindowRange[0]]?.value ?? null;
-    const end = availableWindows[debouncedWindowRange[1]]?.value ?? null;
-    dispatch({ type: "SET_WINDOW_START", value: start });
-    dispatch({ type: "SET_WINDOW_END", value: end });
+    dispatch({ type: "SET_WINDOW_START", value: availableWindows[debouncedWindowRange[0]]?.value ?? null });
+    dispatch({ type: "SET_WINDOW_END", value: availableWindows[debouncedWindowRange[1]]?.value ?? null });
   }, [debouncedWindowRange, availableWindows, dispatch]);
 
   const MAX_FEE_EUR = 250_000_000;
@@ -67,39 +173,33 @@ export const FilterBar = memo(function FilterBar() {
 
   const togglePosition = useCallback((pg: PositionGroup) => {
     const current = filters.positionGroups;
-    const next = current.includes(pg)
-      ? current.filter((p) => p !== pg)
-      : [...current, pg];
+    const next = current.includes(pg) ? current.filter((p) => p !== pg) : [...current, pg];
     dispatch({ type: "SET_POSITION_GROUPS", value: next.length === 4 ? [] : next });
   }, [filters.positionGroups, dispatch]);
+
+  // Summaries for chips
+  const typeSummary = filters.transferType === "permanent" ? "Perm" : filters.transferType === "loan" ? "Loan" : "All";
+  const feeMinEur = feeRange[0] === 0 ? 0 : Math.round(Math.pow(10, (feeRange[0] / 100) * Math.log10(MAX_FEE_CENTS))) / 100;
+  const feeMaxEur = feeRange[1] >= 100 ? null : Math.round(Math.pow(10, (feeRange[1] / 100) * Math.log10(MAX_FEE_CENTS))) / 100;
+  const feeSummary = feeRange[0] === 0 && feeRange[1] >= 100
+    ? "Any"
+    : `${formatFee(feeMinEur * 100)}–${feeMaxEur === null ? "Max" : formatFee(feeMaxEur * 100)}`;
+  const posSummary = filters.positionGroups.length === 0 ? "All" : filters.positionGroups.join(", ");
+  const ageSummary = ageRange[0] <= 15 && ageRange[1] >= 40 ? "Any" : `${ageRange[0]}–${ageRange[1]}`;
 
   const windowStartLabel = availableWindows[windowRange[0]]?.value;
   const windowEndLabel = availableWindows[windowRange[1]]?.value;
 
-  const feeMinDisplay = feeRange[0] === 0 ? "€0" : formatFee(Math.round(Math.pow(10, (feeRange[0] / 100) * Math.log10(MAX_FEE_CENTS))));
-  const feeMaxDisplay = feeRange[1] >= 100 ? "Max" : formatFee(Math.round(Math.pow(10, (feeRange[1] / 100) * Math.log10(MAX_FEE_CENTS))));
-
-  function FilterLabel({ label, left, right }: { label: string; left?: string; right?: string }) {
-    return (
-      <div className="flex justify-between items-baseline mb-1">
-        <span className="font-data text-[10px] text-[#4ade80]/60 tabular-nums">{left}</span>
-        <span className="text-[9px] font-medium uppercase tracking-[0.1em] text-[#6b8a78]">{label}</span>
-        <span className="font-data text-[10px] text-[#4ade80]/60 tabular-nums">{right}</span>
-      </div>
-    );
-  }
-
   return (
-    <div className="h-14 bg-[#0e1f16]/60 backdrop-blur-lg border-b border-white/[0.04] flex items-center gap-4 px-5 shrink-0 relative noise">
+    <div className="h-12 bg-[#0e1f16]/60 backdrop-blur-lg border-b border-white/[0.04] flex items-center gap-3 px-5 shrink-0 relative z-30 noise">
 
-      {/* Time range */}
-      <div className="flex flex-col flex-[2.5] min-w-0">
-        <FilterLabel
-          label="Window"
-          left={windowStartLabel ? abbreviateWindow(windowStartLabel) : ""}
-          right={windowEndLabel ? abbreviateWindow(windowEndLabel) : ""}
-        />
-        <div className="flex gap-1.5 items-center">
+      {/* Time range slider — always visible (hero control) */}
+      <div className="flex items-center gap-3 flex-1 min-w-0 max-w-[500px]">
+        <span className="text-[9px] font-medium uppercase tracking-[0.1em] text-[#6b8a78] shrink-0">Window</span>
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <span className="font-data text-[10px] text-[#4ade80]/60 tabular-nums shrink-0 w-7 text-right">
+            {windowStartLabel ? abbreviateWindow(windowStartLabel) : ""}
+          </span>
           <input
             type="range"
             min={0}
@@ -116,106 +216,153 @@ export const FilterBar = memo(function FilterBar() {
             onChange={(e) => setWindowRange([windowRange[0], Math.max(Number(e.target.value), windowRange[0])])}
             className="flex-1 h-1"
           />
+          <span className="font-data text-[10px] text-[#4ade80]/60 tabular-nums shrink-0 w-7">
+            {windowEndLabel ? abbreviateWindow(windowEndLabel) : ""}
+          </span>
         </div>
       </div>
 
       {/* Separator */}
-      <div className="w-px h-7 bg-white/[0.06]" />
+      <div className="w-px h-6 bg-white/[0.06]" />
 
-      {/* Transfer type */}
-      <div className="flex flex-col">
-        <span className="text-[9px] font-medium uppercase tracking-[0.1em] text-[#6b8a78] mb-1 text-center">Type</span>
-        <div className="flex rounded-lg overflow-hidden border border-white/[0.06] bg-white/[0.02]">
+      {/* Transfer type popover */}
+      <FilterPopover
+        label="Type"
+        summary={typeSummary}
+        isActive={filters.transferType !== "permanent"}
+        isOpen={openPopover === "type"}
+        onToggle={() => setOpenPopover(openPopover === "type" ? null : "type")}
+        onClose={() => setOpenPopover(null)}
+      >
+        <div className="flex flex-col gap-1">
           {TRANSFER_TYPES.map((t) => (
             <button
               key={t}
-              onClick={() => dispatch({ type: "SET_TRANSFER_TYPE", value: t })}
-              className={`px-2.5 py-1 text-[11px] font-medium capitalize transition-all duration-200 ${
+              onClick={() => { dispatch({ type: "SET_TRANSFER_TYPE", value: t }); setOpenPopover(null); }}
+              className={`px-3 py-2 rounded-lg text-[13px] font-medium capitalize text-left transition-all duration-200 ${
                 filters.transferType === t
-                  ? "bg-[#4ade80]/15 text-[#4ade80] shadow-[inset_0_0_0_1px_rgba(74,222,128,0.25)]"
-                  : "text-[#6b8a78] hover:text-[#c5dace] hover:bg-white/[0.02]"
+                  ? "bg-[#4ade80]/15 text-[#4ade80]"
+                  : "text-[#8fa898] hover:bg-white/[0.04] hover:text-[#c5dace]"
               }`}
             >
               {t}
             </button>
           ))}
         </div>
-      </div>
+      </FilterPopover>
 
-      {/* Separator */}
-      <div className="w-px h-7 bg-white/[0.06]" />
-
-      {/* Fee range */}
-      <div className="flex flex-col flex-1 min-w-0">
-        <FilterLabel label="Fee" left={feeMinDisplay} right={feeMaxDisplay} />
-        <div className="flex gap-1.5 items-center">
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={feeRange[0]}
-            onChange={(e) => setFeeRange([Math.min(Number(e.target.value), feeRange[1]), feeRange[1]])}
-            className="flex-1 h-1"
-          />
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={feeRange[1]}
-            onChange={(e) => setFeeRange([feeRange[0], Math.max(Number(e.target.value), feeRange[0])])}
-            className="flex-1 h-1"
-          />
+      {/* Fee popover */}
+      <FilterPopover
+        label="Fee"
+        summary={feeSummary}
+        isActive={feeRange[0] > 0 || feeRange[1] < 100}
+        isOpen={openPopover === "fee"}
+        onToggle={() => setOpenPopover(openPopover === "fee" ? null : "fee")}
+        onClose={() => setOpenPopover(null)}
+      >
+        <div className="w-[280px]">
+          <div className="flex justify-between items-center mb-3">
+            <FeeInput
+              value={feeMinEur}
+              onChange={(eur) => {
+                const v = eur <= 0 ? 0 : Math.round((Math.log10(eur * 100) / Math.log10(MAX_FEE_CENTS)) * 100);
+                setFeeRange([Math.min(Math.max(v, 0), feeRange[1]), feeRange[1]]);
+              }}
+            />
+            <span className="text-[#6b8a78] text-[11px]">to</span>
+            <FeeInput
+              value={feeMaxEur}
+              onChange={(eur) => {
+                if (eur <= 0) { setFeeRange([feeRange[0], 100]); return; }
+                const v = Math.round((Math.log10(eur * 100) / Math.log10(MAX_FEE_CENTS)) * 100);
+                setFeeRange([feeRange[0], Math.max(Math.min(v, 100), feeRange[0])]);
+              }}
+              isMax
+            />
+          </div>
+          <div className="flex gap-2 items-center">
+            <input
+              type="range" min={0} max={100} value={feeRange[0]}
+              onChange={(e) => setFeeRange([Math.min(Number(e.target.value), feeRange[1]), feeRange[1]])}
+              className="flex-1 h-1"
+            />
+            <input
+              type="range" min={0} max={100} value={feeRange[1]}
+              onChange={(e) => setFeeRange([feeRange[0], Math.max(Number(e.target.value), feeRange[0])])}
+              className="flex-1 h-1"
+            />
+          </div>
         </div>
-      </div>
+      </FilterPopover>
 
-      {/* Separator */}
-      <div className="w-px h-7 bg-white/[0.06]" />
-
-      {/* Position group */}
-      <div className="flex flex-col">
-        <span className="text-[9px] font-medium uppercase tracking-[0.1em] text-[#6b8a78] mb-1 text-center">Position</span>
-        <div className="flex gap-1">
-          {POSITION_GROUPS.map((pg) => (
+      {/* Position popover */}
+      <FilterPopover
+        label="Pos"
+        summary={posSummary}
+        isActive={filters.positionGroups.length > 0}
+        isOpen={openPopover === "pos"}
+        onToggle={() => setOpenPopover(openPopover === "pos" ? null : "pos")}
+        onClose={() => setOpenPopover(null)}
+      >
+        <div className="flex flex-col gap-1.5">
+          <div className="text-[11px] text-[#6b8a78] mb-1">Select positions to filter</div>
+          <div className="flex gap-1.5">
+            {POSITION_GROUPS.map((pg) => (
+              <button
+                key={pg.key}
+                onClick={() => togglePosition(pg.key)}
+                className={`px-3 py-1.5 text-[12px] font-semibold rounded-lg border transition-all duration-200 ${
+                  filters.positionGroups.includes(pg.key)
+                    ? pg.active
+                    : pg.inactive + " bg-white/[0.02] hover:bg-white/[0.04]"
+                }`}
+              >
+                {pg.label}
+              </button>
+            ))}
+          </div>
+          {filters.positionGroups.length > 0 && (
             <button
-              key={pg.key}
-              onClick={() => togglePosition(pg.key)}
-              className={`px-2 py-0.5 text-[11px] font-semibold rounded-md border transition-all duration-200 ${
-                filters.positionGroups.includes(pg.key)
-                  ? pg.active
-                  : pg.inactive + " bg-white/[0.02] hover:bg-white/[0.04]"
-              }`}
+              onClick={() => dispatch({ type: "SET_POSITION_GROUPS", value: [] })}
+              className="text-[11px] text-[#6b8a78] hover:text-[#c5dace] mt-1 self-start transition-colors"
             >
-              {pg.label}
+              Clear filter
             </button>
-          ))}
+          )}
         </div>
-      </div>
+      </FilterPopover>
 
-      {/* Separator */}
-      <div className="w-px h-7 bg-white/[0.06]" />
-
-      {/* Age range */}
-      <div className="flex flex-col flex-1 min-w-0">
-        <FilterLabel label="Age" left={String(ageRange[0])} right={String(ageRange[1])} />
-        <div className="flex gap-1.5 items-center">
-          <input
-            type="range"
-            min={15}
-            max={40}
-            value={ageRange[0]}
-            onChange={(e) => setAgeRange([Math.min(Number(e.target.value), ageRange[1]), ageRange[1]])}
-            className="flex-1 h-1"
-          />
-          <input
-            type="range"
-            min={15}
-            max={40}
-            value={ageRange[1]}
-            onChange={(e) => setAgeRange([ageRange[0], Math.max(Number(e.target.value), ageRange[0])])}
-            className="flex-1 h-1"
-          />
+      {/* Age popover */}
+      <FilterPopover
+        label="Age"
+        summary={ageSummary}
+        isActive={ageRange[0] > 15 || ageRange[1] < 40}
+        isOpen={openPopover === "age"}
+        onToggle={() => setOpenPopover(openPopover === "age" ? null : "age")}
+        onClose={() => setOpenPopover(null)}
+      >
+        <div className="w-[240px]">
+          <div className="flex justify-between items-center mb-3">
+            <span className="font-data text-[14px] text-[#e8f0ec] tabular-nums">{ageRange[0]}</span>
+            <span className="text-[#6b8a78] text-[11px]">to</span>
+            <span className="font-data text-[14px] text-[#e8f0ec] tabular-nums">{ageRange[1]}</span>
+          </div>
+          <div className="flex gap-2 items-center">
+            <span className="text-[10px] text-[#6b8a78] font-data">15</span>
+            <input
+              type="range" min={15} max={40} value={ageRange[0]}
+              onChange={(e) => setAgeRange([Math.min(Number(e.target.value), ageRange[1]), ageRange[1]])}
+              className="flex-1 h-1"
+            />
+            <input
+              type="range" min={15} max={40} value={ageRange[1]}
+              onChange={(e) => setAgeRange([ageRange[0], Math.max(Number(e.target.value), ageRange[0])])}
+              className="flex-1 h-1"
+            />
+            <span className="text-[10px] text-[#6b8a78] font-data">40</span>
+          </div>
         </div>
-      </div>
+      </FilterPopover>
     </div>
   );
 });
