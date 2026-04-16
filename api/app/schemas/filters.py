@@ -11,7 +11,7 @@ class TransferFilters:
 
     window_start: str | None = Query(None, description="Start of time range, e.g. 'Summer 2019'")
     window_end: str | None = Query(None, description="End of time range, e.g. 'Winter 2023'")
-    transfer_type: str = Query("permanent", description="'permanent', 'loan', or 'all'")
+    transfer_type: str = Query("all", description="'paid', 'free', or 'all'")
     fee_min: int = Query(0, description="Minimum fee in EUR cents")
     fee_max: int | None = Query(None, description="Maximum fee in EUR cents (null = no limit)")
     position_group: str | None = Query(None, description="Comma-separated: GK, DEF, MID, FWD")
@@ -44,4 +44,9 @@ class TransferFilters:
     @property
     def needs_raw_transfers(self) -> bool:
         """Whether these filters require querying raw Transfer rows instead of pre-aggregated tables."""
-        return self.needs_player_join or self.fee_min > 0 or self.fee_max is not None
+        return (
+            self.needs_player_join
+            or self.fee_min > 0
+            or self.fee_max is not None
+            or self.transfer_type != "all"
+        )

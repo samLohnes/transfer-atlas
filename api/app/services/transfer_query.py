@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from sqlalchemy import and_, extract, func
+from sqlalchemy import and_, extract, func, or_
 from sqlalchemy.orm import Query, Session
 
 from app.models import Club, Country, Player, Transfer
@@ -29,10 +29,10 @@ def apply_transfer_filters(
         query = query.filter(Transfer.transfer_window.in_(windows))
 
     # Transfer type
-    if filters.transfer_type == "permanent":
-        query = query.filter(Transfer.fee_is_loan == False)  # noqa: E712
-    elif filters.transfer_type == "loan":
-        query = query.filter(Transfer.fee_is_loan == True)  # noqa: E712
+    if filters.transfer_type == "paid":
+        query = query.filter(Transfer.fee_eur > 0)
+    elif filters.transfer_type == "free":
+        query = query.filter(or_(Transfer.fee_eur == 0, Transfer.fee_eur.is_(None)))
 
     # Fee range
     if filters.fee_min > 0:

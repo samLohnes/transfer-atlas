@@ -22,6 +22,7 @@ def _fast_path(db: Session, filters: TransferFilters) -> CountryFlowsResponse:
     FromCountry = aliased(Country, name="from_country")
     ToCountry = aliased(Country, name="to_country")
 
+    # Fast path only runs for transfer_type="all" (paid/free force slow path).
     query = (
         db.query(
             CountryTransferFlow.from_country_id,
