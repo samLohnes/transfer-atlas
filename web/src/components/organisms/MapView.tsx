@@ -61,9 +61,12 @@ export function MapView({
   }, [countrySummaries]);
 
   const maxFlowFee = useMemo(() => {
-    if (flows.length === 0) return 1;
-    return Math.max(...flows.map((f) => f.total_fee_eur), 1);
+    if (flows.length === 0) return 0;
+    return Math.max(...flows.map((f) => f.total_fee_eur));
   }, [flows]);
+
+  // When all fees are zero (e.g. free transfers), size by transfer count instead
+  const sizeByCount = maxFlowFee === 0;
 
   // Total transfers per country for tooltip and node sizing
   const countryTransferTotals = useMemo(() => {
@@ -84,8 +87,9 @@ export function MapView({
 
   const maxVolume = useMemo(() => {
     if (countryTransferTotals.size === 0) return 1;
-    return Math.max(...Array.from(countryTransferTotals.values()).map((t) => t.volume), 1);
-  }, [countryTransferTotals]);
+    const vals = Array.from(countryTransferTotals.values());
+    return Math.max(...vals.map((t) => sizeByCount ? t.count : t.volume), 1);
+  }, [countryTransferTotals, sizeByCount]);
 
   // Country node color
   function getNodeColor(countryId: number): [number, number, number, number] {
@@ -106,8 +110,9 @@ export function MapView({
       data: countries,
       getPosition: (d: Country) => [d.longitude, d.latitude],
       getRadius: (d: Country) => {
-        const vol = countryTransferTotals.get(d.id)?.volume ?? 0;
-        const normalized = Math.sqrt(vol / maxVolume);
+        const totals = countryTransferTotals.get(d.id);
+        const val = sizeByCount ? (totals?.count ?? 0) : (totals?.volume ?? 0);
+        const normalized = Math.sqrt(val / maxVolume);
         return 30000 + normalized * 120000;
       },
       getFillColor: (d: Country) => getNodeColor(d.id),
@@ -177,16 +182,31 @@ export function MapView({
     }
 
     const maxNetFee = Math.max(...Array.from(netFlowMap.values()).map((f) => Math.abs(f.netFee)), 1);
-    const netFlowThreshold = maxNetFee * 0.005;
+    const maxTransfers = Math.max(...Array.from(netFlowMap.values()).map((f) => f.totalTransfers), 1);
+
+    // Use transfer count for sizing/thresholding when fees are all zero
+    const sizeMetric = sizeByCount
+      ? (f: { netFee: number; totalTransfers: number }) => f.totalTransfers
+      : (f: { netFee: number; totalTransfers: number }) => Math.abs(f.netFee);
+    const maxMetric = sizeByCount ? maxTransfers : maxNetFee;
+    const threshold = maxMetric * 0.005;
 
     const arcData = Array.from(netFlowMap.values())
-      .filter((f) => Math.abs(f.netFee) >= netFlowThreshold)
+      .filter((f) => sizeMetric(f) >= threshold)
       .map((f) => {
-        // Arc goes from spender to receiver (direction of money)
-        const spenderId = f.netFee >= 0 ? f.countryA_id : f.countryB_id;
-        const receiverId = f.netFee >= 0 ? f.countryB_id : f.countryA_id;
-        const spenderName = f.netFee >= 0 ? f.countryA_name : f.countryB_name;
-        const receiverName = f.netFee >= 0 ? f.countryB_name : f.countryA_name;
+        // When sizing by count, direction is arbitrary — use countryA→countryB
+        const spenderId = sizeByCount
+          ? f.countryA_id
+          : (f.netFee >= 0 ? f.countryA_id : f.countryB_id);
+        const receiverId = sizeByCount
+          ? f.countryB_id
+          : (f.netFee >= 0 ? f.countryB_id : f.countryA_id);
+        const spenderName = sizeByCount
+          ? f.countryA_name
+          : (f.netFee >= 0 ? f.countryA_name : f.countryB_name);
+        const receiverName = sizeByCount
+          ? f.countryB_name
+          : (f.netFee >= 0 ? f.countryB_name : f.countryA_name);
         const spender = countryById.get(spenderId);
         const receiver = countryById.get(receiverId);
         if (!spender || !receiver) return null;
@@ -194,6 +214,7 @@ export function MapView({
           fromPos: [spender.longitude, spender.latitude] as [number, number],
           toPos: [receiver.longitude, receiver.latitude] as [number, number],
           fee: Math.abs(f.netFee),
+          magnitude: sizeMetric(f),
           spenderId,
           receiverId,
           spenderName,
@@ -203,22 +224,26 @@ export function MapView({
       })
       .filter(Boolean) as {
         fromPos: [number, number]; toPos: [number, number];
-        fee: number; spenderId: number; receiverId: number;
+        fee: number; magnitude: number; spenderId: number; receiverId: number;
         spenderName: string; receiverName: string; totalTransfers: number;
       }[];
 
-    const maxLogFee = Math.log10(Math.max(maxNetFee, 1));
+    const maxLogMetric = Math.log10(Math.max(maxMetric, 1));
 
     const arcLayer = new ArcLayer({
       id: "flow-arcs",
       data: arcData,
       getSourcePosition: (d) => d.fromPos,
       getTargetPosition: (d) => d.toPos,
-      getSourceColor: [239, 68, 68, 178],  // red (spender end)
-      getTargetColor: [34, 197, 94, 178],   // green (receiver end)
+      getSourceColor: sizeByCount
+        ? [148, 163, 184, 178] as [number, number, number, number]  // neutral gray-blue (no money direction)
+        : [239, 68, 68, 178] as [number, number, number, number],   // red (spender end)
+      getTargetColor: sizeByCount
+        ? [148, 163, 184, 178] as [number, number, number, number]
+        : [34, 197, 94, 178] as [number, number, number, number],   // green (receiver end)
       getWidth: (d) => {
-        const logFee = Math.log10(Math.max(d.fee, 1));
-        const normalized = logFee / maxLogFee;
+        const logVal = Math.log10(Math.max(d.magnitude, 1));
+        const normalized = logVal / maxLogMetric;
         return 1 + normalized * 11;
       },
       getHeight: 0.5,
@@ -244,12 +269,14 @@ export function MapView({
         }
       },
       updateTriggers: {
-        getWidth: [maxNetFee],
+        getWidth: [maxMetric, sizeByCount],
+        getSourceColor: [sizeByCount],
+        getTargetColor: [sizeByCount],
       },
     });
 
     return [arcLayer, scatterLayer];
-  }, [countries, flows, countrySummaries, countryTransferTotals, maxVolume, maxAbsNetSpend, maxFlowFee, countryById, summaryById, onSelectCountry, onSelectArc]);
+  }, [countries, flows, countrySummaries, countryTransferTotals, maxVolume, maxAbsNetSpend, maxFlowFee, sizeByCount, countryById, summaryById, onSelectCountry, onSelectArc]);
 
   return (
     <div ref={containerRef} className="relative w-full h-full">

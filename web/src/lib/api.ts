@@ -19,7 +19,7 @@ function filterParams(filters: FilterState): URLSearchParams {
 
   if (filters.windowStart) params.set("window_start", filters.windowStart);
   if (filters.windowEnd) params.set("window_end", filters.windowEnd);
-  if (filters.transferType !== "permanent") params.set("transfer_type", filters.transferType);
+  if (filters.transferType !== "all") params.set("transfer_type", filters.transferType);
   if (filters.feeMin > 0) params.set("fee_min", String(filters.feeMin));
   if (filters.feeMax !== null) params.set("fee_max", String(filters.feeMax));
   if (filters.positionGroups.length > 0) params.set("position_group", filters.positionGroups.join(","));

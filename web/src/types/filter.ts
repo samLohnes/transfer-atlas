@@ -2,7 +2,7 @@
 export type PositionGroup = "GK" | "DEF" | "MID" | "FWD";
 
 /** Transfer type filter values. */
-export type TransferType = "permanent" | "loan" | "all";
+export type TransferType = "paid" | "free" | "all";
 
 /** A transfer window option from the API. */
 export interface TransferWindow {
