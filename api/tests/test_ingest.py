@@ -294,6 +294,22 @@ class TestIngestTransfers:
         ingest_transfers(seeded_session, data_dir)
         assert seeded_session.query(Transfer).count() == 4
 
+    def test_unchanged_values_preserve_data(self, seeded_session, data_dir):
+        """When a re-run has identical data, transfer rows are preserved."""
+        ingest_transfers(seeded_session, data_dir)
+        before = {
+            (t.player_id, t.transfer_date, t.from_club_id, t.to_club_id):
+                (t.id, t.fee_eur, t.fee_is_loan, t.transfer_window, t.season)
+            for t in seeded_session.query(Transfer).all()
+        }
+        ingest_transfers(seeded_session, data_dir)
+        after = {
+            (t.player_id, t.transfer_date, t.from_club_id, t.to_club_id):
+                (t.id, t.fee_eur, t.fee_is_loan, t.transfer_window, t.season)
+            for t in seeded_session.query(Transfer).all()
+        }
+        assert before == after
+
 
 class TestIngestValuations:
     """Verify valuation ingestion with skip logic."""
@@ -355,3 +371,44 @@ class TestIngestValuations:
         ingest_valuations(seeded_session, data_dir)
         ingest_valuations(seeded_session, data_dir)
         assert seeded_session.query(PlayerValuation).count() == 3
+
+    def test_unchanged_value_preserves_data(self, seeded_session, data_dir):
+        """When a re-run has identical values, rows remain correct (no-op UPDATE)."""
+        ingest_valuations(seeded_session, data_dir)
+        # Snapshot IDs and values
+        before = {
+            (v.player_id, v.valuation_date): (v.id, v.valuation_eur)
+            for v in seeded_session.query(PlayerValuation).all()
+        }
+        # Re-run with same data — all rows should be "unchanged"
+        ingest_valuations(seeded_session, data_dir)
+        after = {
+            (v.player_id, v.valuation_date): (v.id, v.valuation_eur)
+            for v in seeded_session.query(PlayerValuation).all()
+        }
+        # IDs and values must match exactly — no rows modified
+        assert before == after
+
+    def test_changed_value_updates_record(self, seeded_session, data_dir, tmp_path):
+        """When a valuation's value changes between runs, the record is updated."""
+        from tests.conftest import write_csv
+
+        ingest_valuations(seeded_session, data_dir)
+        original = seeded_session.query(PlayerValuation).filter(
+            PlayerValuation.player_id == 1,
+            PlayerValuation.valuation_date == date(2023, 6, 1),
+        ).first()
+        assert original.valuation_eur == 6_000_000_000
+
+        # Rewrite the valuations CSV with a different value for player 100 on 2023-06-01
+        write_csv(data_dir / "player_valuations.csv", [
+            "player_id", "date", "market_value_in_eur",
+        ], [
+            {"player_id": "100", "date": "2023-06-01", "market_value_in_eur": "99000000.0"},
+        ])
+        ingest_valuations(seeded_session, data_dir)
+        updated = seeded_session.query(PlayerValuation).filter(
+            PlayerValuation.player_id == 1,
+            PlayerValuation.valuation_date == date(2023, 6, 1),
+        ).first()
+        assert updated.valuation_eur == 9_900_000_000  # 99M * 100

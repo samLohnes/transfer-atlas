@@ -370,19 +370,24 @@ def ingest_transfers(session: Session, data_dir: Path) -> int:
         if c.transfermarkt_id
     }
 
-    # Load all existing transfer natural keys for in-memory dedup
-    existing_keys: dict[tuple, int] = {
-        (r.player_id, r.transfer_date, r.from_club_id, r.to_club_id): r.id
+    # Load existing transfer keys with their current mutable fields for dedup
+    # and change-detection (skip UPDATE when nothing actually changed).
+    existing: dict[tuple, tuple[int, int | None, bool, str, str]] = {
+        (r.player_id, r.transfer_date, r.from_club_id, r.to_club_id):
+            (r.id, r.fee_eur, r.fee_is_loan, r.transfer_window, r.season)
         for r in session.query(
             Transfer.id, Transfer.player_id, Transfer.transfer_date,
             Transfer.from_club_id, Transfer.to_club_id,
+            Transfer.fee_eur, Transfer.fee_is_loan,
+            Transfer.transfer_window, Transfer.season,
         ).all()
     }
-    logger.info("Loaded %d existing transfer keys for dedup.", len(existing_keys))
+    logger.info("Loaded %d existing transfer keys for dedup.", len(existing))
 
     count = 0
     skipped = 0
     excluded_loans = 0
+    unchanged = 0
 
     for chunk in pd.read_csv(data_dir / "transfers.csv", low_memory=False, chunksize=CHUNK_SIZE):
         if count == 0 and skipped == 0:
@@ -445,8 +450,13 @@ def ingest_transfers(session: Session, data_dir: Path) -> int:
                 "season": season,
             }
 
-            if natural_key in existing_keys:
-                update_records.append((existing_keys[natural_key], fields))
+            if natural_key in existing:
+                tid, old_fee, old_loan, old_window, old_season = existing[natural_key]
+                if (old_fee == fee_cents and old_loan == is_loan
+                        and old_window == window and old_season == season):
+                    unchanged += 1
+                else:
+                    update_records.append((tid, fields))
             else:
                 new_records.append({
                     "player_id": player_id,
@@ -455,7 +465,7 @@ def ingest_transfers(session: Session, data_dir: Path) -> int:
                     "transfer_date": transfer_date,
                     **fields,
                 })
-                existing_keys[natural_key] = -1  # sentinel
+                existing[natural_key] = (-1, fee_cents, is_loan, window, season)
 
             count += 1
 
@@ -475,8 +485,8 @@ def ingest_transfers(session: Session, data_dir: Path) -> int:
 
     session.commit()
     logger.info(
-        "Transfers ingested: %d records. Skipped: %d. Excluded loan returns: %d.",
-        count, skipped, excluded_loans,
+        "Transfers ingested: %d records. Skipped: %d. Excluded loan returns: %d. Unchanged (no-op): %d.",
+        count, skipped, excluded_loans, unchanged,
     )
     return count
 
@@ -489,17 +499,20 @@ def ingest_valuations(session: Session, data_dir: Path) -> int:
         if p.transfermarkt_id
     }
 
-    # Load all existing valuation keys for in-memory dedup
-    existing_keys: dict[tuple, int] = {
-        (r.player_id, r.valuation_date): r.id
+    # Load existing valuation keys with their current value for in-memory dedup
+    # and change-detection (skip UPDATE when value is unchanged).
+    existing: dict[tuple, tuple[int, int]] = {
+        (r.player_id, r.valuation_date): (r.id, r.valuation_eur)
         for r in session.query(
-            PlayerValuation.id, PlayerValuation.player_id, PlayerValuation.valuation_date,
+            PlayerValuation.id, PlayerValuation.player_id,
+            PlayerValuation.valuation_date, PlayerValuation.valuation_eur,
         ).all()
     }
-    logger.info("Loaded %d existing valuation keys for dedup.", len(existing_keys))
+    logger.info("Loaded %d existing valuation keys for dedup.", len(existing))
 
     count = 0
     skipped = 0
+    unchanged = 0
 
     for chunk in pd.read_csv(data_dir / "player_valuations.csv", low_memory=False, chunksize=CHUNK_SIZE):
         new_records: list[dict] = []
@@ -532,15 +545,20 @@ def ingest_valuations(session: Session, data_dir: Path) -> int:
 
             key = (player_id, val_date)
 
-            if key in existing_keys:
-                update_records.append((existing_keys[key], val_cents))
+            if key in existing:
+                val_id, old_val_cents = existing[key]
+                if old_val_cents == val_cents:
+                    # Value unchanged — no UPDATE needed
+                    unchanged += 1
+                else:
+                    update_records.append((val_id, val_cents))
             else:
                 new_records.append({
                     "player_id": player_id,
                     "valuation_eur": val_cents,
                     "valuation_date": val_date,
                 })
-                existing_keys[key] = -1  # sentinel
+                existing[key] = (-1, val_cents)  # sentinel id, actual value
 
             count += 1
 
@@ -561,7 +579,10 @@ def ingest_valuations(session: Session, data_dir: Path) -> int:
             logger.info("  ... %d valuations processed", count)
 
     session.commit()
-    logger.info("Valuations ingested: %d records. Skipped: %d.", count, skipped)
+    logger.info(
+        "Valuations ingested: %d records. Skipped: %d. Unchanged (no-op): %d.",
+        count, skipped, unchanged,
+    )
     return count
 
 
