@@ -15,8 +15,11 @@ interface NetworkGraphProps {
   error: string | null;
   onRetry: () => void;
   onExpandCountry: (countryId: number) => void;
+  onCollapseCountry: (countryId: number) => void;
   onSelectCountry: (countryId: number) => void;
   onSelectClub: (clubId: number) => void;
+  /** Incremented to trigger a zoomToFit (e.g. when sidebar opens/closes). */
+  fitKey?: number;
 }
 
 interface GraphNode {
@@ -51,8 +54,10 @@ export function NetworkGraph({
   error,
   onRetry,
   onExpandCountry,
+  onCollapseCountry,
   onSelectCountry,
   onSelectClub,
+  fitKey,
 }: NetworkGraphProps) {
   const graphRef = useRef<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [tooltip, setTooltip] = useState<{ x: number; y: number; content: string } | null>(null);
@@ -155,6 +160,15 @@ export function NetworkGraph({
     return { nodes, links };
   }, [networkData, expandedData, expandedCountries]);
 
+  // Re-fit when sidebar opens/closes (fitKey changes)
+  useEffect(() => {
+    const fg = graphRef.current;
+    if (!fg || fitKey === undefined) return;
+    // Delay past the 300ms CSS transition so the container has finished resizing
+    const timer = setTimeout(() => fg.zoomToFit(400, 40), 400);
+    return () => clearTimeout(timer);
+  }, [fitKey]);
+
   // Configure forces when graph data changes
   useEffect(() => {
     const fg = graphRef.current;
@@ -211,17 +225,19 @@ export function NetworkGraph({
     }
   }, []);
 
-  // Click handler
+  // Click handler — country toggles expand/collapse, club opens sidebar
   const handleNodeClick = useCallback((node: GraphNode) => {
     if (node.type === "country" && node.countryId !== undefined) {
-      if (!expandedCountries.has(node.countryId)) {
+      if (expandedCountries.has(node.countryId)) {
+        onCollapseCountry(node.countryId);
+      } else {
         onExpandCountry(node.countryId);
+        onSelectCountry(node.countryId);
       }
-      onSelectCountry(node.countryId);
     } else if (node.type === "club" && node.clubId !== undefined) {
       onSelectClub(node.clubId);
     }
-  }, [expandedCountries, onExpandCountry, onSelectCountry, onSelectClub]);
+  }, [expandedCountries, onExpandCountry, onCollapseCountry, onSelectCountry, onSelectClub]);
 
   // Hover handler
   const handleNodeHover = useCallback((node: GraphNode | null) => {

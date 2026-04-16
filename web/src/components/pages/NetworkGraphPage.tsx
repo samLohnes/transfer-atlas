@@ -5,8 +5,8 @@ import { useClubNetwork } from "@/hooks/useClubNetwork";
 import { ClubSearchBar } from "@/components/molecules/ClubSearchBar";
 import { NetworkGraph } from "@/components/organisms/NetworkGraph";
 import { NetworkDetailPanel } from "@/components/organisms/NetworkDetailPanel";
-import { FilterBar } from "@/components/organisms/FilterBar";
 import type { NetworkDetailPanelProps } from "@/components/organisms/NetworkDetailPanel";
+import { FilterBar } from "@/components/organisms/FilterBar";
 
 /** Network graph page — club-centric transfer relationship explorer. */
 export function NetworkGraphPage() {
@@ -29,10 +29,11 @@ export function NetworkGraphPage() {
     error,
     retry,
     expandCountry,
+    collapseCountry,
   } = useClubNetwork(clubId, filters);
 
-  // Selection state for the detail sidebar
-  const [selection, setSelection] = useState<NetworkDetailPanelProps["selection"] | null>(null);
+  const [selection, setSelection] = useState<NetworkDetailPanelProps["selection"]>(null);
+  const [fitKey, setFitKey] = useState(0);
 
   // Clear selection when club changes
   useEffect(() => { setSelection(null); }, [clubId]);
@@ -49,6 +50,7 @@ export function NetworkGraphPage() {
       edge,
       expandedData: expanded,
     });
+    setFitKey((k) => k + 1);
   }, [networkData, expandedData]);
 
   // Update the country selection when expanded data arrives
@@ -61,7 +63,6 @@ export function NetworkGraphPage() {
   }, [expandedData, selection]);
 
   const handleSelectClub = useCallback((clickedClubId: number) => {
-    // Find this club in the expanded data
     for (const [, expanded] of expandedData) {
       const clubEdge = expanded.club_edges.find((ce) => ce.club_id === clickedClubId);
       if (clubEdge) {
@@ -71,16 +72,29 @@ export function NetworkGraphPage() {
           clubName: clubEdge.club_name,
           clubEdge,
         });
+        setFitKey((k) => k + 1);
         return;
       }
     }
   }, [expandedData]);
 
+  const handleCollapseCountry = useCallback((countryId: number) => {
+    collapseCountry(countryId);
+    // Close sidebar if it was showing this country
+    setSelection((prev) => {
+      if (prev?.type === "country" && prev.countryId === countryId) return null;
+      return prev;
+    });
+    setFitKey((k) => k + 1);
+  }, [collapseCountry]);
+
   const handleClosePanel = useCallback(() => {
     setSelection(null);
+    setFitKey((k) => k + 1);
   }, []);
 
   const centerClubName = networkData?.center_club.club_name ?? "";
+  const isSelectionOpen = selection !== null;
 
   return (
     <div className="flex-1 flex min-h-0">
@@ -100,19 +114,21 @@ export function NetworkGraphPage() {
             error={error}
             onRetry={retry}
             onExpandCountry={expandCountry}
+            onCollapseCountry={handleCollapseCountry}
             onSelectCountry={handleSelectCountry}
             onSelectClub={handleSelectClub}
+            fitKey={fitKey}
           />
         </div>
       </div>
 
-      {selection && (
-        <NetworkDetailPanel
-          centerClubName={centerClubName}
-          selection={selection}
-          onClose={handleClosePanel}
-        />
-      )}
+      {/* Always rendered — animates between w-0 and full width */}
+      <NetworkDetailPanel
+        centerClubName={centerClubName}
+        isOpen={isSelectionOpen}
+        selection={selection}
+        onClose={handleClosePanel}
+      />
     </div>
   );
 }
