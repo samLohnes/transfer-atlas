@@ -68,7 +68,7 @@ function FilterPopover({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full right-0 mt-2 z-50 rounded-xl bg-[#0e1f16]/95 backdrop-blur-xl border border-white/[0.08] shadow-[0_16px_48px_rgba(0,0,0,0.5)] p-4 min-w-[240px] overflow-hidden">
+        <div className="absolute top-full left-0 mt-2 z-50 rounded-xl bg-[#0e1f16]/95 backdrop-blur-xl border border-white/[0.08] shadow-[0_16px_48px_rgba(0,0,0,0.5)] p-4 min-w-[240px] overflow-hidden">
           {children}
         </div>
       )}
