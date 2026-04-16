@@ -5,7 +5,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
-from sqlalchemy import text
+from sqlalchemy import insert
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -183,7 +183,6 @@ def ingest_competitions(session: Session, data_dir: Path) -> dict[str, tuple[str
     leagues = session.query(League).all()
     league_name_map: dict[str, League] = {l.name: l for l in leagues}
 
-    # Build a mapping of competition names to try matching
     for row in df.itertuples(index=False):
         comp_id = str(row.competition_id)
         comp_name = _safe_str(getattr(row, "name", None)) or ""
@@ -201,9 +200,18 @@ def ingest_competitions(session: Session, data_dir: Path) -> dict[str, tuple[str
 
 def ingest_players(session: Session, data_dir: Path) -> int:
     """Upsert all players from players.csv. Returns count of records processed."""
-    count = 0
+    # Load existing players keyed by transfermarkt_id for in-memory dedup
+    existing_players: dict[str, int] = {
+        str(p.transfermarkt_id): p.id
+        for p in session.query(Player.transfermarkt_id, Player.id).all()
+        if p.transfermarkt_id
+    }
 
+    count = 0
     for chunk in pd.read_csv(data_dir / "players.csv", low_memory=False, chunksize=CHUNK_SIZE):
+        new_records: list[dict] = []
+        update_records: list[tuple[int, dict]] = []
+
         for row in chunk.itertuples(index=False):
             tm_id = _safe_int_str(getattr(row, "player_id", None))
             if not tm_id:
@@ -224,29 +232,37 @@ def ingest_players(session: Session, data_dir: Path) -> int:
             nationality = _safe_str(getattr(row, "country_of_citizenship", None))
             url = _safe_str(getattr(row, "url", None))
 
-            existing = session.query(Player).filter(Player.transfermarkt_id == tm_id).first()
-            if existing:
-                existing.name = name
-                existing.date_of_birth = dob
-                existing.position = sub_position
-                existing.position_group = position_group
-                existing.nationality = nationality
-                existing.transfermarkt_url = url
+            fields = {
+                "name": name,
+                "date_of_birth": dob,
+                "position": sub_position,
+                "position_group": position_group,
+                "nationality": nationality,
+                "transfermarkt_url": url,
+            }
+
+            if tm_id in existing_players:
+                update_records.append((existing_players[tm_id], fields))
             else:
-                session.add(Player(
-                    name=name,
-                    date_of_birth=dob,
-                    position=sub_position,
-                    position_group=position_group,
-                    nationality=nationality,
-                    transfermarkt_id=tm_id,
-                    transfermarkt_url=url,
-                ))
+                fields["transfermarkt_id"] = tm_id
+                new_records.append(fields)
+                # Track so later chunks see this as existing
+                # ID is unknown until flush, but we only need to prevent re-insert
+                existing_players[tm_id] = -1  # sentinel
+
             count += 1
 
-            if count % 5000 == 0:
-                session.flush()
-                logger.info("  ... %d players processed", count)
+        # Bulk insert new records
+        if new_records:
+            session.execute(insert(Player), new_records)
+
+        # Update existing records individually (only on re-runs)
+        for player_id, fields in update_records:
+            session.query(Player).filter(Player.id == player_id).update(fields)
+
+        if new_records or update_records:
+            session.flush()
+            logger.info("  ... %d players processed", count)
 
     session.commit()
     logger.info("Players ingested: %d records.", count)
@@ -273,7 +289,17 @@ def ingest_clubs(
         if l.transfermarkt_id:
             league_tm_map[l.transfermarkt_id] = l.id
 
+    # Load existing clubs for dedup
+    existing_clubs: dict[str, int] = {
+        str(c.transfermarkt_id): c.id
+        for c in session.query(Club.transfermarkt_id, Club.id).all()
+        if c.transfermarkt_id
+    }
+
     count = 0
+    new_records: list[dict] = []
+    update_records: list[tuple[int, dict]] = []
+
     for row in df.itertuples(index=False):
         tm_id = _safe_int_str(getattr(row, "club_id", None))
         if not tm_id:
@@ -285,8 +311,6 @@ def ingest_clubs(
 
         # Resolve country
         country_id: int | None = None
-
-        # Check hardcoded overrides first
         if name in COUNTRY_OVERRIDES:
             override_country = COUNTRY_OVERRIDES[name]
             country_id = _get_or_create_country(session, override_country, country_cache)
@@ -300,25 +324,32 @@ def ingest_clubs(
         if comp_id and comp_id in league_tm_map:
             league_id = league_tm_map[comp_id]
 
-        existing = session.query(Club).filter(Club.transfermarkt_id == tm_id).first()
-        if existing:
-            existing.name = name
-            existing.current_league_id = league_id
-            existing.transfermarkt_url = url
-            # Don't update country_id — it's permanent
+        if tm_id in existing_clubs:
+            update_records.append((existing_clubs[tm_id], {
+                "name": name,
+                "current_league_id": league_id,
+                "transfermarkt_url": url,
+                # Don't update country_id — it's permanent
+            }))
         else:
-            session.add(Club(
-                name=name,
-                country_id=country_id,
-                current_league_id=league_id,
-                transfermarkt_id=tm_id,
-                transfermarkt_url=url,
-            ))
+            new_records.append({
+                "name": name,
+                "country_id": country_id,
+                "current_league_id": league_id,
+                "transfermarkt_id": tm_id,
+                "transfermarkt_url": url,
+            })
+            existing_clubs[tm_id] = -1
+
         count += 1
 
-        if count % 2000 == 0:
-            session.flush()
-            logger.info("  ... %d clubs processed", count)
+    # Bulk insert new
+    if new_records:
+        session.execute(insert(Club), new_records)
+
+    # Update existing
+    for club_id, fields in update_records:
+        session.query(Club).filter(Club.id == club_id).update(fields)
 
     session.commit()
     logger.info("Clubs ingested: %d records.", count)
@@ -339,15 +370,26 @@ def ingest_transfers(session: Session, data_dir: Path) -> int:
         if c.transfermarkt_id
     }
 
+    # Load all existing transfer natural keys for in-memory dedup
+    existing_keys: dict[tuple, int] = {
+        (r.player_id, r.transfer_date, r.from_club_id, r.to_club_id): r.id
+        for r in session.query(
+            Transfer.id, Transfer.player_id, Transfer.transfer_date,
+            Transfer.from_club_id, Transfer.to_club_id,
+        ).all()
+    }
+    logger.info("Loaded %d existing transfer keys for dedup.", len(existing_keys))
+
     count = 0
     skipped = 0
     excluded_loans = 0
-    total_rows = 0
 
     for chunk in pd.read_csv(data_dir / "transfers.csv", low_memory=False, chunksize=CHUNK_SIZE):
-        total_rows += len(chunk)
-        if count == 0:
-            logger.info("Processing transfer records (chunked)...")
+        if count == 0 and skipped == 0:
+            logger.info("Processing transfer records (chunked, batched)...")
+
+        new_records: list[dict] = []
+        update_records: list[tuple[int, dict]] = []
 
         for row in chunk.itertuples(index=False):
             # Parse fee
@@ -395,39 +437,41 @@ def ingest_transfers(session: Session, data_dir: Path) -> int:
                 skipped += 1
                 continue
 
-            # Upsert using natural key
-            existing = (
-                session.query(Transfer)
-                .filter(
-                    Transfer.player_id == player_id,
-                    Transfer.transfer_date == transfer_date,
-                    Transfer.from_club_id == from_club_id,
-                    Transfer.to_club_id == to_club_id,
-                )
-                .first()
-            )
+            natural_key = (player_id, transfer_date, from_club_id, to_club_id)
+            fields = {
+                "fee_eur": fee_cents,
+                "fee_is_loan": is_loan,
+                "transfer_window": window,
+                "season": season,
+            }
 
-            if existing:
-                existing.fee_eur = fee_cents
-                existing.fee_is_loan = is_loan
-                existing.transfer_window = window
-                existing.season = season
+            if natural_key in existing_keys:
+                update_records.append((existing_keys[natural_key], fields))
             else:
-                session.add(Transfer(
-                    player_id=player_id,
-                    from_club_id=from_club_id,
-                    to_club_id=to_club_id,
-                    fee_eur=fee_cents,
-                    fee_is_loan=is_loan,
-                    transfer_window=window,
-                    transfer_date=transfer_date,
-                    season=season,
-                ))
+                new_records.append({
+                    "player_id": player_id,
+                    "from_club_id": from_club_id,
+                    "to_club_id": to_club_id,
+                    "transfer_date": transfer_date,
+                    **fields,
+                })
+                existing_keys[natural_key] = -1  # sentinel
+
             count += 1
 
-            if count % 5000 == 0:
-                session.flush()
-                logger.info("  ... %d transfers processed", count)
+        # Bulk insert new transfers
+        if new_records:
+            session.execute(insert(Transfer), new_records)
+
+        # Update existing (re-run only)
+        for transfer_id, fields in update_records:
+            session.query(Transfer).filter(Transfer.id == transfer_id).update(fields)
+
+        if new_records or update_records:
+            session.flush()
+
+        if count > 0 and count % 5000 < CHUNK_SIZE:
+            logger.info("  ... %d transfers processed", count)
 
     session.commit()
     logger.info(
@@ -445,10 +489,22 @@ def ingest_valuations(session: Session, data_dir: Path) -> int:
         if p.transfermarkt_id
     }
 
+    # Load all existing valuation keys for in-memory dedup
+    existing_keys: dict[tuple, int] = {
+        (r.player_id, r.valuation_date): r.id
+        for r in session.query(
+            PlayerValuation.id, PlayerValuation.player_id, PlayerValuation.valuation_date,
+        ).all()
+    }
+    logger.info("Loaded %d existing valuation keys for dedup.", len(existing_keys))
+
     count = 0
     skipped = 0
 
     for chunk in pd.read_csv(data_dir / "player_valuations.csv", low_memory=False, chunksize=CHUNK_SIZE):
+        new_records: list[dict] = []
+        update_records: list[tuple[int, int]] = []  # (valuation_id, new_val_cents)
+
         for row in chunk.itertuples(index=False):
             player_tm_id = _safe_int_str(getattr(row, "player_id", None))
             if not player_tm_id or player_tm_id not in player_tm_map:
@@ -474,28 +530,35 @@ def ingest_valuations(session: Session, data_dir: Path) -> int:
                 skipped += 1
                 continue
 
-            # Simple upsert: check if exists
-            existing = (
-                session.query(PlayerValuation)
-                .filter(
-                    PlayerValuation.player_id == player_id,
-                    PlayerValuation.valuation_date == val_date,
-                )
-                .first()
-            )
-            if existing:
-                existing.valuation_eur = val_cents
+            key = (player_id, val_date)
+
+            if key in existing_keys:
+                update_records.append((existing_keys[key], val_cents))
             else:
-                session.add(PlayerValuation(
-                    player_id=player_id,
-                    valuation_eur=val_cents,
-                    valuation_date=val_date,
-                ))
+                new_records.append({
+                    "player_id": player_id,
+                    "valuation_eur": val_cents,
+                    "valuation_date": val_date,
+                })
+                existing_keys[key] = -1  # sentinel
+
             count += 1
 
-            if count % 50000 == 0:
-                session.flush()
-                logger.info("  ... %d valuations processed", count)
+        # Bulk insert new valuations
+        if new_records:
+            session.execute(insert(PlayerValuation), new_records)
+
+        # Update existing (re-run only)
+        for val_id, val_cents in update_records:
+            session.query(PlayerValuation).filter(
+                PlayerValuation.id == val_id
+            ).update({"valuation_eur": val_cents})
+
+        if new_records or update_records:
+            session.flush()
+
+        if count > 0 and count % 50000 < CHUNK_SIZE:
+            logger.info("  ... %d valuations processed", count)
 
     session.commit()
     logger.info("Valuations ingested: %d records. Skipped: %d.", count, skipped)
