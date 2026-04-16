@@ -15,8 +15,8 @@ interface NetworkGraphProps {
   error: string | null;
   onRetry: () => void;
   onExpandCountry: (countryId: number) => void;
-  onCollapseCountry: (countryId: number) => void;
-  onRecenter: (clubId: number) => void;
+  onSelectCountry: (countryId: number) => void;
+  onSelectClub: (clubId: number) => void;
 }
 
 interface GraphNode {
@@ -51,8 +51,8 @@ export function NetworkGraph({
   error,
   onRetry,
   onExpandCountry,
-  onCollapseCountry,
-  onRecenter,
+  onSelectCountry,
+  onSelectClub,
 }: NetworkGraphProps) {
   const graphRef = useRef<any>(null); // eslint-disable-line @typescript-eslint/no-explicit-any
   const [tooltip, setTooltip] = useState<{ x: number; y: number; content: string } | null>(null);
@@ -214,15 +214,14 @@ export function NetworkGraph({
   // Click handler
   const handleNodeClick = useCallback((node: GraphNode) => {
     if (node.type === "country" && node.countryId !== undefined) {
-      if (expandedCountries.has(node.countryId)) {
-        onCollapseCountry(node.countryId);
-      } else {
+      if (!expandedCountries.has(node.countryId)) {
         onExpandCountry(node.countryId);
       }
+      onSelectCountry(node.countryId);
     } else if (node.type === "club" && node.clubId !== undefined) {
-      onRecenter(node.clubId);
+      onSelectClub(node.clubId);
     }
-  }, [expandedCountries, onExpandCountry, onCollapseCountry, onRecenter]);
+  }, [expandedCountries, onExpandCountry, onSelectCountry, onSelectClub]);
 
   // Hover handler
   const handleNodeHover = useCallback((node: GraphNode | null) => {
