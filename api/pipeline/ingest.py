@@ -126,10 +126,12 @@ def _get_or_create_country(session: Session, name: str, country_cache: dict[str,
 
     # Create new out-of-scope country
     iso = ISO_CODES.get(resolved_name, resolved_name[:3].upper())
-    # Ensure uniqueness — append digits if collision
-    existing_iso = session.query(Country).filter(Country.iso_code == iso).first()
-    if existing_iso:
-        iso = resolved_name[:2].upper() + str(len(country_cache) % 10)
+    # Ensure uniqueness — increment suffix until no collision
+    base_iso = iso
+    suffix = 1
+    while session.query(Country).filter(Country.iso_code == iso).first():
+        iso = f"{base_iso[:2]}{suffix}"
+        suffix += 1
 
     new_country = Country(
         name=resolved_name,
