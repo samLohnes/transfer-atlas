@@ -1,5 +1,6 @@
 """Pipeline entry point — orchestrates all ingestion steps."""
 
+import argparse
 import logging
 import sys
 from pathlib import Path
@@ -8,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.database import SessionLocal, engine
+from app.models import PipelineMetadata
 from pipeline.aggregate import rebuild_club_summaries, rebuild_country_flows
 from pipeline.fetch import fetch_datasets, get_dataset_commit_hash
 from pipeline.ingest import (
@@ -27,18 +29,47 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _is_data_unchanged(commit_hash: str | None) -> bool:
+    """Return True if the stored commit hash matches the given one (skip ingestion)."""
+    if not commit_hash:
+        return False
+    session = SessionLocal()
+    try:
+        meta = session.query(PipelineMetadata).first()
+        return meta is not None and meta.source_commit_hash == commit_hash
+    finally:
+        session.close()
+
+
 def main() -> None:
     """Run the full data pipeline."""
+    parser = argparse.ArgumentParser(description="TransferAtlas data pipeline")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-run ingestion even if the source commit hash is unchanged",
+    )
+    args = parser.parse_args()
+
     logger.info("=== TransferAtlas Data Pipeline ===")
 
     total_records = 0
 
     try:
+        # Check source commit hash before downloading anything
+        commit_hash = get_dataset_commit_hash()
+        logger.info("Dataset commit: %s", commit_hash or "unknown")
+
+        if not args.force and _is_data_unchanged(commit_hash):
+            logger.info(
+                "Source data unchanged (commit %s). Skipping ingestion. "
+                "Pass --force to re-run.", commit_hash
+            )
+            return
+
         # Step 1: Fetch data
         logger.info("Step 1/7: Fetching datasets...")
         data_dir = fetch_datasets()
-        commit_hash = get_dataset_commit_hash()
-        logger.info("Dataset commit: %s", commit_hash or "unknown")
 
         # Step 2: Ingest competitions (resolves league transfermarkt_ids + builds comp→country map)
         logger.info("Step 2/7: Processing competitions...")
