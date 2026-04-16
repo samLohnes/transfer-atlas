@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight } from "lucide-react";
+import { ArrowLeftRight, ArrowRight, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { useFilters } from "@/hooks/useFilters";
 import { useCountryDetail } from "@/hooks/useCountryDetail";
 import { Badge } from "@/components/atoms/Badge";
@@ -24,10 +24,18 @@ export function CountryPanel({ countryId, onClose }: CountryPanelProps) {
   const [sortBy, setSortBy] = useState<SortField>("fee");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
+  const [direction, setDirection] = useState<"both" | "buying" | "selling">("both");
 
-  useEffect(() => { setPage(1); }, [countryId, filters]);
+  useEffect(() => { setPage(1); }, [countryId, filters, direction]);
 
-  const { data, isLoading, error, retry } = useCountryDetail({ countryId, filters, sortBy, sortOrder, page });
+  const { data, isLoading, error, retry } = useCountryDetail({
+    countryId,
+    direction: direction === "both" ? null : direction,
+    filters,
+    sortBy,
+    sortOrder,
+    page,
+  });
 
   const handleSort = useCallback((field: SortField) => {
     if (sortBy === field) {
@@ -98,9 +106,47 @@ export function CountryPanel({ countryId, onClose }: CountryPanelProps) {
             <ClubList clubs={data.top_selling_clubs} label="Top Selling Clubs" valueKey="total_received_eur" />
 
             <div>
-              <h3 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b8a78] mb-2.5">
-                Transfers <span className="font-data text-[#4a6555]">({formatCount(data.transfers.total)})</span>
-              </h3>
+              <div className="flex items-center justify-between mb-2.5">
+                <h3 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b8a78]">
+                  Transfers <span className="font-data text-[#4a6555]">({formatCount(data.transfers.total)})</span>
+                </h3>
+
+                <div className="flex rounded-lg overflow-hidden border border-white/[0.06] bg-white/[0.02]">
+                  <button
+                    onClick={() => setDirection("both")}
+                    className={`px-2 py-1 text-[10px] font-medium flex items-center gap-1 transition-all duration-200 ${
+                      direction === "both"
+                        ? "bg-[#4ade80]/15 text-[#4ade80]"
+                        : "text-[#6b8a78] hover:text-[#c5dace]"
+                    }`}
+                  >
+                    <ArrowLeftRight className="h-3 w-3" />
+                    Both
+                  </button>
+                  <button
+                    onClick={() => setDirection("buying")}
+                    className={`px-2 py-1 text-[10px] font-medium flex items-center gap-1 transition-all duration-200 ${
+                      direction === "buying"
+                        ? "bg-red-500/15 text-red-400"
+                        : "text-[#6b8a78] hover:text-[#c5dace]"
+                    }`}
+                  >
+                    <ArrowDownToLine className="h-3 w-3" />
+                    Buying
+                  </button>
+                  <button
+                    onClick={() => setDirection("selling")}
+                    className={`px-2 py-1 text-[10px] font-medium flex items-center gap-1 transition-all duration-200 ${
+                      direction === "selling"
+                        ? "bg-emerald-500/15 text-emerald-400"
+                        : "text-[#6b8a78] hover:text-[#c5dace]"
+                    }`}
+                  >
+                    <ArrowUpFromLine className="h-3 w-3" />
+                    Selling
+                  </button>
+                </div>
+              </div>
               <TransferTable
                 items={data.transfers.items}
                 total={data.transfers.total}
