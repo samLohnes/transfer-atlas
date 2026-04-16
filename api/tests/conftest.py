@@ -36,6 +36,27 @@ def db_session():
 
 
 @pytest.fixture()
+def minimal_session(db_session):
+    """Session with only countries + leagues — the state after migrations/seed, before any pipeline run.
+
+    Used by end-to-end tests that run the full ingest chain from scratch.
+    """
+    england = Country(id=1, name="England", iso_code="ENG", latitude=51.5, longitude=-0.1, in_scope=True)
+    spain = Country(id=2, name="Spain", iso_code="ESP", latitude=40.4, longitude=-3.7, in_scope=True)
+    other = Country(id=3, name="Other", iso_code="OTH", latitude=0.0, longitude=0.0, in_scope=False)
+    db_session.add_all([england, spain, other])
+    db_session.flush()
+
+    pl = League(id=1, name="Premier League", country_id=1, tier=1)
+    laliga = League(id=2, name="LaLiga", country_id=2, tier=1)
+    db_session.add_all([pl, laliga])
+    db_session.flush()
+
+    db_session.commit()
+    return db_session
+
+
+@pytest.fixture()
 def seeded_session(db_session):
     """Session with baseline countries, leagues, players, and clubs for transfer/valuation tests."""
     # Countries

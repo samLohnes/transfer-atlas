@@ -478,3 +478,133 @@ class TestSchemaValidation:
         # No warnings about missing or unexpected columns
         schema_warnings = [r for r in caplog.records if "column" in r.message.lower()]
         assert schema_warnings == []
+
+
+class TestFullPipelineE2E:
+    """End-to-end pipeline test: runs all 5 ingest functions in sequence against
+    fixture CSVs, starting from a minimal seed (countries + leagues only).
+
+    This catches composition bugs that unit tests miss — ordering issues, FK
+    resolution across steps, data flowing correctly from one function to the next.
+
+    Does NOT exercise `rebuild_country_flows`/`rebuild_club_summaries` because
+    their swap-table SQL uses PostgreSQL-specific features (ALTER INDEX RENAME,
+    DROP CASCADE). Aggregation E2E requires a real PostgreSQL connection.
+    """
+
+    def test_full_ingest_chain_from_scratch(self, minimal_session, data_dir):
+        """Run the full ingest chain and verify the resulting database state."""
+        # Step 1: competitions — returns comp_id → (country_name, country_id) map
+        comp_map = ingest_competitions(minimal_session, data_dir)
+        assert "GB1" in comp_map
+        assert "ES1" in comp_map
+        assert comp_map["GB1"][0] == "England"
+        assert comp_map["ES1"][0] == "Spain"
+
+        # League transfermarkt_ids should be populated
+        pl = minimal_session.query(League).filter(League.name == "Premier League").first()
+        assert pl.transfermarkt_id == "GB1"
+
+        # Step 2: players
+        players_count = ingest_players(minimal_session, data_dir)
+        assert players_count == 4  # fixture has 5 rows, one empty id
+
+        # Step 3: clubs — uses the comp_map from step 1
+        clubs_count = ingest_clubs(minimal_session, data_dir, comp_map)
+        assert clubs_count == 5  # fixture has 6 rows, one empty id
+
+        # Step 4: transfers — depends on players + clubs existing from steps 2 & 3
+        transfers_count = ingest_transfers(minimal_session, data_dir)
+        assert transfers_count == 4
+
+        # Step 5: valuations — depends on players from step 2
+        vals_count = ingest_valuations(minimal_session, data_dir)
+        assert vals_count == 3
+
+    def test_transfer_fks_resolve_correctly(self, minimal_session, data_dir):
+        """Verify that transfers link to the correct players and clubs after full ingest."""
+        comp_map = ingest_competitions(minimal_session, data_dir)
+        ingest_players(minimal_session, data_dir)
+        ingest_clubs(minimal_session, data_dir, comp_map)
+        ingest_transfers(minimal_session, data_dir)
+
+        # The €50M Player One transfer from Club A → Club B
+        player_one = minimal_session.query(Player).filter(
+            Player.transfermarkt_id == "100"
+        ).first()
+        club_a = minimal_session.query(Club).filter(Club.transfermarkt_id == "10").first()
+        club_b = minimal_session.query(Club).filter(Club.transfermarkt_id == "20").first()
+
+        t = minimal_session.query(Transfer).filter(
+            Transfer.player_id == player_one.id,
+            Transfer.transfer_date == date(2023, 7, 1),
+        ).first()
+        assert t is not None
+        assert t.from_club_id == club_a.id
+        assert t.to_club_id == club_b.id
+        assert t.fee_eur == 5_000_000_000  # €50M in cents
+
+    def test_valuation_fks_resolve_correctly(self, minimal_session, data_dir):
+        """Verify valuations link to the correct players after full ingest."""
+        comp_map = ingest_competitions(minimal_session, data_dir)
+        ingest_players(minimal_session, data_dir)
+        ingest_clubs(minimal_session, data_dir, comp_map)
+        ingest_valuations(minimal_session, data_dir)
+
+        player_one = minimal_session.query(Player).filter(
+            Player.transfermarkt_id == "100"
+        ).first()
+
+        vals = minimal_session.query(PlayerValuation).filter(
+            PlayerValuation.player_id == player_one.id
+        ).order_by(PlayerValuation.valuation_date).all()
+        assert len(vals) == 2
+        assert vals[0].valuation_eur == 6_000_000_000  # €60M
+        assert vals[1].valuation_eur == 5_500_000_000  # €55M
+
+    def test_club_country_resolution_via_competition(self, minimal_session, data_dir):
+        """Verify clubs are assigned to the correct country via their competition map."""
+        comp_map = ingest_competitions(minimal_session, data_dir)
+        ingest_clubs(minimal_session, data_dir, comp_map)
+
+        # Club A plays in GB1 (Premier League) → should be England
+        club_a = minimal_session.query(Club).filter(Club.transfermarkt_id == "10").first()
+        england = minimal_session.query(Country).filter(Country.name == "England").first()
+        assert club_a.country_id == england.id
+
+        # Club B plays in ES1 (LaLiga) → should be Spain
+        club_b = minimal_session.query(Club).filter(Club.transfermarkt_id == "20").first()
+        spain = minimal_session.query(Country).filter(Country.name == "Spain").first()
+        assert club_b.country_id == spain.id
+
+    def test_rerun_is_idempotent(self, minimal_session, data_dir):
+        """Running the full pipeline twice produces the same result as running it once."""
+        comp_map = ingest_competitions(minimal_session, data_dir)
+        ingest_players(minimal_session, data_dir)
+        ingest_clubs(minimal_session, data_dir, comp_map)
+        ingest_transfers(minimal_session, data_dir)
+        ingest_valuations(minimal_session, data_dir)
+
+        # Snapshot row counts
+        first_run = {
+            "players": minimal_session.query(Player).count(),
+            "clubs": minimal_session.query(Club).count(),
+            "transfers": minimal_session.query(Transfer).count(),
+            "valuations": minimal_session.query(PlayerValuation).count(),
+        }
+
+        # Re-run everything
+        comp_map = ingest_competitions(minimal_session, data_dir)
+        ingest_players(minimal_session, data_dir)
+        ingest_clubs(minimal_session, data_dir, comp_map)
+        ingest_transfers(minimal_session, data_dir)
+        ingest_valuations(minimal_session, data_dir)
+
+        second_run = {
+            "players": minimal_session.query(Player).count(),
+            "clubs": minimal_session.query(Club).count(),
+            "transfers": minimal_session.query(Transfer).count(),
+            "valuations": minimal_session.query(PlayerValuation).count(),
+        }
+
+        assert first_run == second_run
