@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { ArrowLeftRight, ArrowRight } from "lucide-react";
 import { useFilters } from "@/hooks/useFilters";
 import { useCountryDetail } from "@/hooks/useCountryDetail";
 import { EmptyState } from "@/components/molecules/EmptyState";
@@ -8,21 +9,18 @@ import { TransferTable } from "./TransferTable";
 import type { SortField } from "./TransferTable";
 import { formatFee, formatCount } from "@/lib/format";
 import { getFlag } from "@/lib/flags";
-import type { TransferRow } from "@/types/transfer";
 
 interface FlowPanelProps {
-  /** Primary country (the spender side of the arc). */
   countryId: number;
   countryName: string;
-  /** Counterpart country. */
   counterpartCountryId: number;
   counterpartCountryName: string;
   onClose: () => void;
 }
 
-type DirectionFilter = "both" | "to" | "from";
+type DirectionFilter = "both" | "buying" | "selling";
 
-/** Detail panel for a country-to-country flow — summary cards, direction toggle, transfers. */
+/** Detail panel for a country-to-country flow. */
 export function FlowPanel({
   countryId,
   countryName,
@@ -34,13 +32,14 @@ export function FlowPanel({
   const [sortBy, setSortBy] = useState<SortField>("fee");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
-  const [direction] = useState<DirectionFilter>("both");
+  const [direction, setDirection] = useState<DirectionFilter>("both");
 
-  useEffect(() => { setPage(1); }, [countryId, counterpartCountryId, filters]);
+  useEffect(() => { setPage(1); }, [countryId, counterpartCountryId, filters, direction]);
 
   const { data, isLoading, error, retry } = useCountryDetail({
     countryId,
     counterpartCountryId,
+    direction: direction === "both" ? null : direction,
     filters,
     sortBy,
     sortOrder,
@@ -57,15 +56,6 @@ export function FlowPanel({
     setPage(1);
   }, [sortBy]);
 
-  // Client-side direction filtering on the already-fetched transfers
-  const filteredItems: TransferRow[] = data
-    ? data.transfers.items.filter(() => {
-        if (direction === "both") return true;
-        return true;
-      })
-    : [];
-
-  // Compute summary stats from the top clubs data
   const totalSpentByPrimary = data?.top_buying_clubs.reduce((sum, c) => sum + c.total_spent_eur, 0) ?? 0;
   const totalReceivedByPrimary = data?.top_selling_clubs.reduce((sum, c) => sum + c.total_received_eur, 0) ?? 0;
 
@@ -95,7 +85,7 @@ export function FlowPanel({
             {/* Summary cards */}
             <div className="grid grid-cols-2 gap-3 mb-5">
               <StatCard
-                label={`${countryName} → ${counterpartCountryName}`}
+                label={`${countryName} buys from ${counterpartCountryName}`}
                 value={formatFee(totalSpentByPrimary)}
                 badge={{
                   text: `${formatCount(data.top_buying_clubs.reduce((s, c) => s + c.transfer_count, 0))} transfers`,
@@ -103,7 +93,7 @@ export function FlowPanel({
                 }}
               />
               <StatCard
-                label={`${counterpartCountryName} → ${countryName}`}
+                label={`${countryName} sells to ${counterpartCountryName}`}
                 value={formatFee(totalReceivedByPrimary)}
                 badge={{
                   text: `${formatCount(data.top_selling_clubs.reduce((s, c) => s + c.transfer_count, 0))} transfers`,
@@ -123,13 +113,56 @@ export function FlowPanel({
               </span>
             </div>
 
-            {/* Transfers */}
+            {/* Direction toggle + Transfers */}
             <div>
-              <h3 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b8a78] mb-2.5">
-                Transfers <span className="font-data text-[#4a6555]">({formatCount(data.transfers.total)})</span>
-              </h3>
+              <div className="flex items-center justify-between mb-2.5">
+                <h3 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6b8a78]">
+                  Transfers <span className="font-data text-[#4a6555]">({formatCount(data.transfers.total)})</span>
+                </h3>
+
+                {/* Direction toggle */}
+                <div className="flex rounded-lg overflow-hidden border border-white/[0.06] bg-white/[0.02]">
+                  <button
+                    onClick={() => setDirection("both")}
+                    className={`px-2 py-1 text-[10px] font-medium flex items-center gap-1 transition-all duration-200 ${
+                      direction === "both"
+                        ? "bg-[#4ade80]/15 text-[#4ade80]"
+                        : "text-[#6b8a78] hover:text-[#c5dace]"
+                    }`}
+                    title="Show all transfers"
+                  >
+                    <ArrowLeftRight className="h-3 w-3" />
+                    Both
+                  </button>
+                  <button
+                    onClick={() => setDirection("buying")}
+                    className={`px-2 py-1 text-[10px] font-medium flex items-center gap-1 transition-all duration-200 ${
+                      direction === "buying"
+                        ? "bg-red-500/15 text-red-400"
+                        : "text-[#6b8a78] hover:text-[#c5dace]"
+                    }`}
+                    title={`${countryName} buying`}
+                  >
+                    <ArrowRight className="h-3 w-3" />
+                    {countryName} buys
+                  </button>
+                  <button
+                    onClick={() => setDirection("selling")}
+                    className={`px-2 py-1 text-[10px] font-medium flex items-center gap-1 transition-all duration-200 ${
+                      direction === "selling"
+                        ? "bg-emerald-500/15 text-emerald-400"
+                        : "text-[#6b8a78] hover:text-[#c5dace]"
+                    }`}
+                    title={`${countryName} selling`}
+                  >
+                    <ArrowRight className="h-3 w-3 rotate-180" />
+                    {countryName} sells
+                  </button>
+                </div>
+              </div>
+
               <TransferTable
-                items={filteredItems}
+                items={data.transfers.items}
                 total={data.transfers.total}
                 page={page}
                 pageSize={data.transfers.page_size}
