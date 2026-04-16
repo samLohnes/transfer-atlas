@@ -108,6 +108,22 @@ ISO_CODES: dict[str, str] = {
     "Other": "OTH",
 }
 
+CHUNK_SIZE = 10_000
+
+
+def _safe_str(value: object) -> str | None:
+    """Convert a value to string, returning None for NaN/empty."""
+    if pd.isna(value) or value == "":
+        return None
+    return str(value)
+
+
+def _safe_int_str(value: object) -> str | None:
+    """Convert a numeric value to its int string form (e.g. 100.0 → '100')."""
+    if pd.isna(value):
+        return None
+    return str(int(value))
+
 
 def _get_or_create_country(session: Session, name: str, country_cache: dict[str, int]) -> int:
     """Get country ID by name, creating it as out-of-scope if needed."""
@@ -156,9 +172,9 @@ def ingest_competitions(session: Session, data_dir: Path) -> dict[str, tuple[str
 
     # Build competition_id → (country_name, country_id) mapping
     comp_country_map: dict[str, tuple[str, int]] = {}
-    for _, row in df.iterrows():
-        comp_id = str(row["competition_id"])
-        country_name = str(row.get("country_name", "")) if pd.notna(row.get("country_name")) else None
+    for row in df.itertuples(index=False):
+        comp_id = str(row.competition_id)
+        country_name = _safe_str(getattr(row, "country_name", None))
         if country_name:
             country_id = _get_or_create_country(session, country_name, country_cache)
             comp_country_map[comp_id] = (country_name, country_id)
@@ -168,9 +184,9 @@ def ingest_competitions(session: Session, data_dir: Path) -> dict[str, tuple[str
     league_name_map: dict[str, League] = {l.name: l for l in leagues}
 
     # Build a mapping of competition names to try matching
-    for _, row in df.iterrows():
-        comp_id = str(row["competition_id"])
-        comp_name = str(row.get("name", ""))
+    for row in df.itertuples(index=False):
+        comp_id = str(row.competition_id)
+        comp_name = _safe_str(getattr(row, "name", None)) or ""
 
         if comp_name in league_name_map:
             league = league_name_map[comp_name]
@@ -185,52 +201,52 @@ def ingest_competitions(session: Session, data_dir: Path) -> dict[str, tuple[str
 
 def ingest_players(session: Session, data_dir: Path) -> int:
     """Upsert all players from players.csv. Returns count of records processed."""
-    df = pd.read_csv(data_dir / "players.csv", low_memory=False)
-    logger.info("Ingesting %d players...", len(df))
-
     count = 0
-    for _, row in df.iterrows():
-        tm_id = str(int(row["player_id"])) if pd.notna(row.get("player_id")) else None
-        if not tm_id:
-            continue
 
-        name = str(row.get("name", "")) if pd.notna(row.get("name")) else "Unknown"
-        dob = None
-        if pd.notna(row.get("date_of_birth")):
-            try:
-                dob = pd.to_datetime(row["date_of_birth"]).date()
-            except Exception:
-                pass
+    for chunk in pd.read_csv(data_dir / "players.csv", low_memory=False, chunksize=CHUNK_SIZE):
+        for row in chunk.itertuples(index=False):
+            tm_id = _safe_int_str(getattr(row, "player_id", None))
+            if not tm_id:
+                continue
 
-        sub_position = str(row.get("sub_position", "")) if pd.notna(row.get("sub_position")) else None
-        broad_position = str(row.get("position", "")) if pd.notna(row.get("position")) else None
-        position_group = derive_position_group(broad_position)
-        nationality = str(row.get("country_of_citizenship", "")) if pd.notna(row.get("country_of_citizenship")) else None
-        url = str(row.get("url", "")) if pd.notna(row.get("url")) else None
+            name = _safe_str(getattr(row, "name", None)) or "Unknown"
+            dob = None
+            dob_raw = getattr(row, "date_of_birth", None)
+            if pd.notna(dob_raw) and dob_raw != "":
+                try:
+                    dob = pd.to_datetime(dob_raw).date()
+                except Exception:
+                    pass
 
-        existing = session.query(Player).filter(Player.transfermarkt_id == tm_id).first()
-        if existing:
-            existing.name = name
-            existing.date_of_birth = dob
-            existing.position = sub_position
-            existing.position_group = position_group
-            existing.nationality = nationality
-            existing.transfermarkt_url = url
-        else:
-            session.add(Player(
-                name=name,
-                date_of_birth=dob,
-                position=sub_position,
-                position_group=position_group,
-                nationality=nationality,
-                transfermarkt_id=tm_id,
-                transfermarkt_url=url,
-            ))
-        count += 1
+            sub_position = _safe_str(getattr(row, "sub_position", None))
+            broad_position = _safe_str(getattr(row, "position", None))
+            position_group = derive_position_group(broad_position)
+            nationality = _safe_str(getattr(row, "country_of_citizenship", None))
+            url = _safe_str(getattr(row, "url", None))
 
-        if count % 5000 == 0:
-            session.flush()
-            logger.info("  ... %d players processed", count)
+            existing = session.query(Player).filter(Player.transfermarkt_id == tm_id).first()
+            if existing:
+                existing.name = name
+                existing.date_of_birth = dob
+                existing.position = sub_position
+                existing.position_group = position_group
+                existing.nationality = nationality
+                existing.transfermarkt_url = url
+            else:
+                session.add(Player(
+                    name=name,
+                    date_of_birth=dob,
+                    position=sub_position,
+                    position_group=position_group,
+                    nationality=nationality,
+                    transfermarkt_id=tm_id,
+                    transfermarkt_url=url,
+                ))
+            count += 1
+
+            if count % 5000 == 0:
+                session.flush()
+                logger.info("  ... %d players processed", count)
 
     session.commit()
     logger.info("Players ingested: %d records.", count)
@@ -258,14 +274,14 @@ def ingest_clubs(
             league_tm_map[l.transfermarkt_id] = l.id
 
     count = 0
-    for _, row in df.iterrows():
-        tm_id = str(int(row["club_id"])) if pd.notna(row.get("club_id")) else None
+    for row in df.itertuples(index=False):
+        tm_id = _safe_int_str(getattr(row, "club_id", None))
         if not tm_id:
             continue
 
-        name = str(row.get("name", "")) if pd.notna(row.get("name")) else "Unknown"
-        url = str(row.get("url", "")) if pd.notna(row.get("url")) else None
-        comp_id = str(row.get("domestic_competition_id", "")) if pd.notna(row.get("domestic_competition_id")) else None
+        name = _safe_str(getattr(row, "name", None)) or "Unknown"
+        url = _safe_str(getattr(row, "url", None))
+        comp_id = _safe_str(getattr(row, "domestic_competition_id", None))
 
         # Resolve country
         country_id: int | None = None
@@ -311,9 +327,6 @@ def ingest_clubs(
 
 def ingest_transfers(session: Session, data_dir: Path) -> int:
     """Upsert all transfers from transfers.csv. Returns count of records processed."""
-    df = pd.read_csv(data_dir / "transfers.csv", low_memory=False)
-    logger.info("Processing %d raw transfer records...", len(df))
-
     # Build lookup maps
     player_tm_map: dict[str, int] = {
         str(p.transfermarkt_id): p.id
@@ -329,85 +342,92 @@ def ingest_transfers(session: Session, data_dir: Path) -> int:
     count = 0
     skipped = 0
     excluded_loans = 0
+    total_rows = 0
 
-    for _, row in df.iterrows():
-        # Parse fee
-        fee_str = str(row.get("transfer_fee", "")) if pd.notna(row.get("transfer_fee")) else None
-        fee_cents, is_loan, exclude = parse_fee(fee_str)
+    for chunk in pd.read_csv(data_dir / "transfers.csv", low_memory=False, chunksize=CHUNK_SIZE):
+        total_rows += len(chunk)
+        if count == 0:
+            logger.info("Processing transfer records (chunked)...")
 
-        if exclude:
-            excluded_loans += 1
-            continue
+        for row in chunk.itertuples(index=False):
+            # Parse fee
+            fee_str = _safe_str(getattr(row, "transfer_fee", None))
+            fee_cents, is_loan, exclude = parse_fee(fee_str)
 
-        # Resolve player
-        player_tm_id = str(int(row["player_id"])) if pd.notna(row.get("player_id")) else None
-        if not player_tm_id or player_tm_id not in player_tm_map:
-            skipped += 1
-            continue
-        player_id = player_tm_map[player_tm_id]
+            if exclude:
+                excluded_loans += 1
+                continue
 
-        # Resolve clubs
-        from_club_tm = str(int(row["from_club_id"])) if pd.notna(row.get("from_club_id")) else None
-        to_club_tm = str(int(row["to_club_id"])) if pd.notna(row.get("to_club_id")) else None
-        if not from_club_tm or not to_club_tm:
-            skipped += 1
-            continue
-        from_club_id = club_tm_map.get(from_club_tm)
-        to_club_id = club_tm_map.get(to_club_tm)
-        if not from_club_id or not to_club_id:
-            skipped += 1
-            continue
+            # Resolve player
+            player_tm_id = _safe_int_str(getattr(row, "player_id", None))
+            if not player_tm_id or player_tm_id not in player_tm_map:
+                skipped += 1
+                continue
+            player_id = player_tm_map[player_tm_id]
 
-        # Parse date
-        transfer_date: date | None = None
-        if pd.notna(row.get("transfer_date")):
-            try:
-                transfer_date = pd.to_datetime(row["transfer_date"]).date()
-            except Exception:
-                pass
+            # Resolve clubs
+            from_club_tm = _safe_int_str(getattr(row, "from_club_id", None))
+            to_club_tm = _safe_int_str(getattr(row, "to_club_id", None))
+            if not from_club_tm or not to_club_tm:
+                skipped += 1
+                continue
+            from_club_id = club_tm_map.get(from_club_tm)
+            to_club_id = club_tm_map.get(to_club_tm)
+            if not from_club_id or not to_club_id:
+                skipped += 1
+                continue
 
-        # Derive window and season
-        season_raw = str(row.get("transfer_season", "")) if pd.notna(row.get("transfer_season")) else None
-        window = derive_transfer_window(transfer_date, season_raw)
-        season = normalize_season(season_raw)
+            # Parse date
+            transfer_date: date | None = None
+            transfer_date_raw = getattr(row, "transfer_date", None)
+            if pd.notna(transfer_date_raw) and transfer_date_raw != "":
+                try:
+                    transfer_date = pd.to_datetime(transfer_date_raw).date()
+                except Exception:
+                    pass
 
-        if not window or not season:
-            skipped += 1
-            continue
+            # Derive window and season
+            season_raw = _safe_str(getattr(row, "transfer_season", None))
+            window = derive_transfer_window(transfer_date, season_raw)
+            season = normalize_season(season_raw)
 
-        # Upsert using natural key
-        existing = (
-            session.query(Transfer)
-            .filter(
-                Transfer.player_id == player_id,
-                Transfer.transfer_date == transfer_date,
-                Transfer.from_club_id == from_club_id,
-                Transfer.to_club_id == to_club_id,
+            if not window or not season:
+                skipped += 1
+                continue
+
+            # Upsert using natural key
+            existing = (
+                session.query(Transfer)
+                .filter(
+                    Transfer.player_id == player_id,
+                    Transfer.transfer_date == transfer_date,
+                    Transfer.from_club_id == from_club_id,
+                    Transfer.to_club_id == to_club_id,
+                )
+                .first()
             )
-            .first()
-        )
 
-        if existing:
-            existing.fee_eur = fee_cents
-            existing.fee_is_loan = is_loan
-            existing.transfer_window = window
-            existing.season = season
-        else:
-            session.add(Transfer(
-                player_id=player_id,
-                from_club_id=from_club_id,
-                to_club_id=to_club_id,
-                fee_eur=fee_cents,
-                fee_is_loan=is_loan,
-                transfer_window=window,
-                transfer_date=transfer_date,
-                season=season,
-            ))
-        count += 1
+            if existing:
+                existing.fee_eur = fee_cents
+                existing.fee_is_loan = is_loan
+                existing.transfer_window = window
+                existing.season = season
+            else:
+                session.add(Transfer(
+                    player_id=player_id,
+                    from_club_id=from_club_id,
+                    to_club_id=to_club_id,
+                    fee_eur=fee_cents,
+                    fee_is_loan=is_loan,
+                    transfer_window=window,
+                    transfer_date=transfer_date,
+                    season=season,
+                ))
+            count += 1
 
-        if count % 5000 == 0:
-            session.flush()
-            logger.info("  ... %d transfers processed", count)
+            if count % 5000 == 0:
+                session.flush()
+                logger.info("  ... %d transfers processed", count)
 
     session.commit()
     logger.info(
@@ -419,9 +439,6 @@ def ingest_transfers(session: Session, data_dir: Path) -> int:
 
 def ingest_valuations(session: Session, data_dir: Path) -> int:
     """Upsert player valuations from player_valuations.csv. Returns count."""
-    df = pd.read_csv(data_dir / "player_valuations.csv", low_memory=False)
-    logger.info("Ingesting %d valuations...", len(df))
-
     player_tm_map: dict[str, int] = {
         str(p.transfermarkt_id): p.id
         for p in session.query(Player.transfermarkt_id, Player.id).all()
@@ -431,52 +448,54 @@ def ingest_valuations(session: Session, data_dir: Path) -> int:
     count = 0
     skipped = 0
 
-    for _, row in df.iterrows():
-        player_tm_id = str(int(row["player_id"])) if pd.notna(row.get("player_id")) else None
-        if not player_tm_id or player_tm_id not in player_tm_map:
-            skipped += 1
-            continue
-        player_id = player_tm_map[player_tm_id]
-
-        val_eur = row.get("market_value_in_eur")
-        if not pd.notna(val_eur):
-            skipped += 1
-            continue
-        val_cents = int(float(val_eur) * 100)
-
-        val_date = None
-        if pd.notna(row.get("date")):
-            try:
-                val_date = pd.to_datetime(row["date"]).date()
-            except Exception:
+    for chunk in pd.read_csv(data_dir / "player_valuations.csv", low_memory=False, chunksize=CHUNK_SIZE):
+        for row in chunk.itertuples(index=False):
+            player_tm_id = _safe_int_str(getattr(row, "player_id", None))
+            if not player_tm_id or player_tm_id not in player_tm_map:
                 skipped += 1
                 continue
-        else:
-            skipped += 1
-            continue
+            player_id = player_tm_map[player_tm_id]
 
-        # Simple upsert: check if exists
-        existing = (
-            session.query(PlayerValuation)
-            .filter(
-                PlayerValuation.player_id == player_id,
-                PlayerValuation.valuation_date == val_date,
+            val_eur = getattr(row, "market_value_in_eur", None)
+            if pd.isna(val_eur) or val_eur == "":
+                skipped += 1
+                continue
+            val_cents = int(float(val_eur) * 100)
+
+            val_date = None
+            date_raw = getattr(row, "date", None)
+            if pd.notna(date_raw) and date_raw != "":
+                try:
+                    val_date = pd.to_datetime(date_raw).date()
+                except Exception:
+                    skipped += 1
+                    continue
+            else:
+                skipped += 1
+                continue
+
+            # Simple upsert: check if exists
+            existing = (
+                session.query(PlayerValuation)
+                .filter(
+                    PlayerValuation.player_id == player_id,
+                    PlayerValuation.valuation_date == val_date,
+                )
+                .first()
             )
-            .first()
-        )
-        if existing:
-            existing.valuation_eur = val_cents
-        else:
-            session.add(PlayerValuation(
-                player_id=player_id,
-                valuation_eur=val_cents,
-                valuation_date=val_date,
-            ))
-        count += 1
+            if existing:
+                existing.valuation_eur = val_cents
+            else:
+                session.add(PlayerValuation(
+                    player_id=player_id,
+                    valuation_eur=val_cents,
+                    valuation_date=val_date,
+                ))
+            count += 1
 
-        if count % 50000 == 0:
-            session.flush()
-            logger.info("  ... %d valuations processed", count)
+            if count % 50000 == 0:
+                session.flush()
+                logger.info("  ... %d valuations processed", count)
 
     session.commit()
     logger.info("Valuations ingested: %d records. Skipped: %d.", count, skipped)
