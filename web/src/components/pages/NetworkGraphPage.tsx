@@ -80,11 +80,6 @@ export function NetworkGraphPage() {
 
   const handleCollapseCountry = useCallback((countryId: number) => {
     collapseCountry(countryId);
-    // Close sidebar if it was showing this country
-    setSelection((prev) => {
-      if (prev?.type === "country" && prev.countryId === countryId) return null;
-      return prev;
-    });
     setFitKey((k) => k + 1);
   }, [collapseCountry]);
 
