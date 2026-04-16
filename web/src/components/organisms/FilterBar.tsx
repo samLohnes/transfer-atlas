@@ -65,7 +65,7 @@ function FilterPopover({
         }`}
       >
         <span className="uppercase tracking-[0.08em] text-[9px] text-[#6b8a78]">{label}</span>
-        <span className={`font-data tabular-nums text-center truncate ${summaryWidth ?? "min-w-[48px] max-w-[120px]"}`}>{summary}</span>
+        <span className={`font-data tabular-nums text-center truncate ${summaryWidth ?? "w-[100px]"}`}>{summary}</span>
         <ChevronDown className={`h-3 w-3 text-[#6b8a78] transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
       </button>
 
