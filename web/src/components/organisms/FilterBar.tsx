@@ -67,7 +67,7 @@ function FilterPopover({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 z-50 rounded-xl bg-[#0e1f16]/95 backdrop-blur-xl border border-white/[0.08] shadow-[0_16px_48px_rgba(0,0,0,0.5)] p-4 min-w-[240px]">
+        <div className="absolute top-full right-0 mt-2 z-50 rounded-xl bg-[#0e1f16]/95 backdrop-blur-xl border border-white/[0.08] shadow-[0_16px_48px_rgba(0,0,0,0.5)] p-4 min-w-[240px] overflow-hidden">
           {children}
         </div>
       )}
@@ -260,8 +260,8 @@ export const FilterBar = memo(function FilterBar() {
         onToggle={() => setOpenPopover(openPopover === "fee" ? null : "fee")}
         onClose={() => setOpenPopover(null)}
       >
-        <div className="w-[280px]">
-          <div className="flex justify-between items-center mb-3">
+        <div>
+          <div className="flex justify-between items-center mb-4">
             <FeeInput
               value={feeMinEur}
               onChange={(eur) => {
@@ -280,17 +280,23 @@ export const FilterBar = memo(function FilterBar() {
               isMax
             />
           </div>
-          <div className="flex gap-2 items-center">
-            <input
-              type="range" min={0} max={100} value={feeRange[0]}
-              onChange={(e) => setFeeRange([Math.min(Number(e.target.value), feeRange[1]), feeRange[1]])}
-              className="flex-1 h-1"
-            />
-            <input
-              type="range" min={0} max={100} value={feeRange[1]}
-              onChange={(e) => setFeeRange([feeRange[0], Math.max(Number(e.target.value), feeRange[0])])}
-              className="flex-1 h-1"
-            />
+          <div className="space-y-3">
+            <div>
+              <span className="text-[9px] text-[#6b8a78] uppercase tracking-widest">Min</span>
+              <input
+                type="range" min={0} max={100} value={feeRange[0]}
+                onChange={(e) => setFeeRange([Math.min(Number(e.target.value), feeRange[1]), feeRange[1]])}
+                className="w-full h-1 mt-1"
+              />
+            </div>
+            <div>
+              <span className="text-[9px] text-[#6b8a78] uppercase tracking-widest">Max</span>
+              <input
+                type="range" min={0} max={100} value={feeRange[1]}
+                onChange={(e) => setFeeRange([feeRange[0], Math.max(Number(e.target.value), feeRange[0])])}
+                className="w-full h-1 mt-1"
+              />
+            </div>
           </div>
         </div>
       </FilterPopover>
@@ -341,25 +347,29 @@ export const FilterBar = memo(function FilterBar() {
         onToggle={() => setOpenPopover(openPopover === "age" ? null : "age")}
         onClose={() => setOpenPopover(null)}
       >
-        <div className="w-[240px]">
-          <div className="flex justify-between items-center mb-3">
+        <div>
+          <div className="flex justify-between items-center mb-4">
             <span className="font-data text-[14px] text-[#e8f0ec] tabular-nums">{ageRange[0]}</span>
             <span className="text-[#6b8a78] text-[11px]">to</span>
             <span className="font-data text-[14px] text-[#e8f0ec] tabular-nums">{ageRange[1]}</span>
           </div>
-          <div className="flex gap-2 items-center">
-            <span className="text-[10px] text-[#6b8a78] font-data">15</span>
-            <input
-              type="range" min={15} max={40} value={ageRange[0]}
-              onChange={(e) => setAgeRange([Math.min(Number(e.target.value), ageRange[1]), ageRange[1]])}
-              className="flex-1 h-1"
-            />
-            <input
-              type="range" min={15} max={40} value={ageRange[1]}
-              onChange={(e) => setAgeRange([ageRange[0], Math.max(Number(e.target.value), ageRange[0])])}
-              className="flex-1 h-1"
-            />
-            <span className="text-[10px] text-[#6b8a78] font-data">40</span>
+          <div className="space-y-3">
+            <div>
+              <span className="text-[9px] text-[#6b8a78] uppercase tracking-widest">Min</span>
+              <input
+                type="range" min={15} max={40} value={ageRange[0]}
+                onChange={(e) => setAgeRange([Math.min(Number(e.target.value), ageRange[1]), ageRange[1]])}
+                className="w-full h-1 mt-1"
+              />
+            </div>
+            <div>
+              <span className="text-[9px] text-[#6b8a78] uppercase tracking-widest">Max</span>
+              <input
+                type="range" min={15} max={40} value={ageRange[1]}
+                onChange={(e) => setAgeRange([ageRange[0], Math.max(Number(e.target.value), ageRange[0])])}
+                className="w-full h-1 mt-1"
+              />
+            </div>
           </div>
         </div>
       </FilterPopover>
