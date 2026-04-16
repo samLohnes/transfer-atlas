@@ -18,7 +18,7 @@ export type FilterAction =
 export const DEFAULT_FILTERS: FilterState = {
   windowStart: null,
   windowEnd: null,
-  transferType: "permanent",
+  transferType: "all",
   feeMin: 0,
   feeMax: null,
   positionGroups: [],

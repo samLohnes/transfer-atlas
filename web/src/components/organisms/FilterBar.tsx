@@ -12,7 +12,7 @@ const POSITION_GROUPS: { key: PositionGroup; label: string; active: string; inac
   { key: "FWD", label: "FWD", active: "bg-red-500/20 text-red-400 border-red-500/40 shadow-[0_0_8px_rgba(239,68,68,0.15)]", inactive: "text-red-500/40 border-white/[0.06]" },
 ];
 
-const TRANSFER_TYPES = ["permanent", "loan", "all"] as const;
+const TRANSFER_TYPES = ["all", "paid", "free"] as const;
 
 /** Fee breakpoints in EUR — meaningful values for football transfers. */
 const FEE_STEPS_EUR = [
@@ -226,7 +226,7 @@ export const FilterBar = memo(function FilterBar() {
     ? `${abbreviateWindow(windowStartLabel)}–${abbreviateWindow(windowEndLabel)}` : "All";
   const windowActive = committedWindow[0] > 0 || committedWindow[1] < availableWindows.length - 1;
 
-  const typeSummary = filters.transferType === "permanent" ? "Perm" : filters.transferType === "loan" ? "Loan" : "All";
+  const typeSummary = filters.transferType === "paid" ? "Paid" : filters.transferType === "free" ? "Free" : "All";
 
   const committedFeeMinEur = feeIndexToEur(committedFee[0]);
   const committedFeeMaxEur = feeIndexToEur(committedFee[1]);
@@ -273,7 +273,7 @@ export const FilterBar = memo(function FilterBar() {
       <div className="w-px h-6 bg-white/[0.06] shrink-0" />
 
       {/* Type (instant, no apply needed) */}
-      <FilterPopover label="Type" summary={typeSummary} isActive={filters.transferType !== "permanent"}
+      <FilterPopover label="Type" summary={typeSummary} isActive={filters.transferType !== "all"}
         isOpen={openPopover === "type"} onToggle={() => setOpenPopover(openPopover === "type" ? null : "type")} onClose={() => setOpenPopover(null)}>
         <div className="flex flex-col gap-1">
           {TRANSFER_TYPES.map((t) => (
