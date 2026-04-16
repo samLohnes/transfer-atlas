@@ -20,6 +20,7 @@ def get_country_detail(
     db: Session, country_id: int, filters: TransferFilters,
     sort_by: str, sort_order: str, page: int, page_size: int,
     counterpart_country_id: int | None = None,
+    direction: str | None = None,
 ) -> CountryDetailResponse | None:
     """Build the country detail panel response."""
     country = db.query(Country).filter(Country.id == country_id, Country.in_scope == True).first()  # noqa: E712
@@ -158,13 +159,24 @@ def get_country_detail(
         .join(ToClub, Transfer.to_club_id == ToClub.id)
     )
 
-    # Filter by country pair or single country
+    # Filter by country pair or single country, with optional direction
     if counterpart_club_ids is not None:
         from sqlalchemy import or_, and_
-        transfer_query = transfer_query.filter(or_(
-            and_(Transfer.from_club_id.in_(club_ids), Transfer.to_club_id.in_(counterpart_club_ids)),
-            and_(Transfer.from_club_id.in_(counterpart_club_ids), Transfer.to_club_id.in_(club_ids)),
-        ))
+        if direction == "buying":
+            # Primary country is buyer: primary clubs in to_club, counterpart in from_club
+            transfer_query = transfer_query.filter(
+                and_(Transfer.to_club_id.in_(club_ids), Transfer.from_club_id.in_(counterpart_club_ids))
+            )
+        elif direction == "selling":
+            # Primary country is seller: primary clubs in from_club, counterpart in to_club
+            transfer_query = transfer_query.filter(
+                and_(Transfer.from_club_id.in_(club_ids), Transfer.to_club_id.in_(counterpart_club_ids))
+            )
+        else:
+            transfer_query = transfer_query.filter(or_(
+                and_(Transfer.from_club_id.in_(club_ids), Transfer.to_club_id.in_(counterpart_club_ids)),
+                and_(Transfer.from_club_id.in_(counterpart_club_ids), Transfer.to_club_id.in_(club_ids)),
+            ))
     else:
         transfer_query = transfer_query.filter(
             (Transfer.from_club_id.in_(club_ids)) | (Transfer.to_club_id.in_(club_ids))

@@ -39,10 +39,11 @@ def country_detail(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     counterpart_country_id: int | None = Query(None, description="Only show transfers involving this counterpart country"),
+    direction: str | None = Query(None, description="'buying' = primary country is buyer, 'selling' = primary is seller, null = both"),
     db: Session = Depends(get_db),
 ) -> CountryDetailResponse:
     """Return country detail panel data."""
-    result = get_country_detail(db, country_id, filters, sort_by, sort_order, page, page_size, counterpart_country_id)
+    result = get_country_detail(db, country_id, filters, sort_by, sort_order, page, page_size, counterpart_country_id, direction)
     if result is None:
         raise HTTPException(status_code=404, detail="Country not found or not in scope")
     return result
