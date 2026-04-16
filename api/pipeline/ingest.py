@@ -110,6 +110,67 @@ ISO_CODES: dict[str, str] = {
 
 CHUNK_SIZE = 10_000
 
+# CSV schema expectations per entity.
+#   required — columns we actually read during ingest; missing any raises an error.
+#   known    — the broader set of columns expected to exist upstream (including
+#              ones we don't use). Columns outside this set trigger a warning
+#              so we notice when Transfermarkt adds something new.
+REQUIRED_COLUMNS: dict[str, set[str]] = {
+    "competitions.csv": {"competition_id", "name", "country_name"},
+    "players.csv": {
+        "player_id", "name", "date_of_birth", "position", "sub_position",
+        "country_of_citizenship", "url",
+    },
+    "clubs.csv": {"club_id", "name", "domestic_competition_id", "url"},
+    "transfers.csv": {
+        "player_id", "transfer_date", "transfer_season",
+        "from_club_id", "to_club_id", "transfer_fee",
+    },
+    "player_valuations.csv": {"player_id", "date", "market_value_in_eur"},
+}
+
+KNOWN_COLUMNS: dict[str, set[str]] = {
+    "competitions.csv": REQUIRED_COLUMNS["competitions.csv"],
+    "players.csv": REQUIRED_COLUMNS["players.csv"],
+    "clubs.csv": REQUIRED_COLUMNS["clubs.csv"],
+    # Real transfers.csv also has display-name columns and a market value we don't ingest
+    "transfers.csv": REQUIRED_COLUMNS["transfers.csv"] | {
+        "from_club_name", "to_club_name", "market_value_in_eur", "player_name",
+    },
+    "player_valuations.csv": REQUIRED_COLUMNS["player_valuations.csv"],
+}
+
+
+class SchemaValidationError(RuntimeError):
+    """Raised when a CSV's schema doesn't match expectations."""
+
+
+def _validate_schema(csv_path: Path) -> None:
+    """Check that a CSV has all required columns. Warn on truly new columns."""
+    filename = csv_path.name
+    required = REQUIRED_COLUMNS.get(filename)
+    if required is None:
+        return  # No schema defined — skip validation
+
+    # Read just the header (fast, no data load)
+    header_df = pd.read_csv(csv_path, nrows=0)
+    actual = set(header_df.columns)
+
+    missing = required - actual
+    if missing:
+        raise SchemaValidationError(
+            f"{filename}: missing required columns {sorted(missing)}. "
+            f"Upstream schema may have changed."
+        )
+
+    known = KNOWN_COLUMNS.get(filename, required)
+    new_columns = actual - known
+    if new_columns:
+        logger.warning(
+            "%s: new upstream columns detected (not yet used): %s",
+            filename, sorted(new_columns),
+        )
+
 
 def _safe_str(value: object) -> str | None:
     """Convert a value to string, returning None for NaN/empty."""
@@ -165,6 +226,7 @@ def _get_or_create_country(session: Session, name: str, country_cache: dict[str,
 
 def ingest_competitions(session: Session, data_dir: Path) -> dict[str, tuple[str, int]]:
     """Load competitions and match to seeded leagues. Returns comp_id → (country_name, country_id) map."""
+    _validate_schema(data_dir / "competitions.csv")
     df = pd.read_csv(data_dir / "competitions.csv")
     logger.info("Processing %d competitions...", len(df))
 
@@ -200,6 +262,8 @@ def ingest_competitions(session: Session, data_dir: Path) -> dict[str, tuple[str
 
 def ingest_players(session: Session, data_dir: Path) -> int:
     """Upsert all players from players.csv. Returns count of records processed."""
+    _validate_schema(data_dir / "players.csv")
+
     # Load existing players keyed by transfermarkt_id for in-memory dedup
     existing_players: dict[str, int] = {
         str(p.transfermarkt_id): p.id
@@ -275,6 +339,7 @@ def ingest_clubs(
     comp_country_map: dict[str, tuple[str, int]],
 ) -> int:
     """Upsert all clubs from clubs.csv. Returns count of records processed."""
+    _validate_schema(data_dir / "clubs.csv")
     df = pd.read_csv(data_dir / "clubs.csv", low_memory=False)
     logger.info("Ingesting %d clubs...", len(df))
 
@@ -358,6 +423,8 @@ def ingest_clubs(
 
 def ingest_transfers(session: Session, data_dir: Path) -> int:
     """Upsert all transfers from transfers.csv. Returns count of records processed."""
+    _validate_schema(data_dir / "transfers.csv")
+
     # Build lookup maps
     player_tm_map: dict[str, int] = {
         str(p.transfermarkt_id): p.id
@@ -493,6 +560,8 @@ def ingest_transfers(session: Session, data_dir: Path) -> int:
 
 def ingest_valuations(session: Session, data_dir: Path) -> int:
     """Upsert player valuations from player_valuations.csv. Returns count."""
+    _validate_schema(data_dir / "player_valuations.csv")
+
     player_tm_map: dict[str, int] = {
         str(p.transfermarkt_id): p.id
         for p in session.query(Player.transfermarkt_id, Player.id).all()
