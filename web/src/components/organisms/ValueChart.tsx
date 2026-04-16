@@ -1,12 +1,12 @@
 import { useMemo } from "react";
 import {
   ResponsiveContainer,
-  AreaChart,
+  ComposedChart,
   Area,
+  Scatter,
   XAxis,
   YAxis,
   Tooltip,
-  ReferenceLine,
 } from "recharts";
 import { formatFee } from "@/lib/format";
 import type { PlayerTransfer, PlayerValuation } from "@/types/player";
@@ -16,35 +16,77 @@ interface ValueChartProps {
   transfers: PlayerTransfer[];
 }
 
-/** Market value line chart with transfer event markers. */
+/** Custom tooltip — shows transfer info when hovering a dot, value when hovering the line. */
+function ChartTooltip({ active, payload }: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+  if (!active || !payload?.length) return null;
+
+  // Check if any payload entry is a transfer dot
+  const transferEntry = payload.find((p: any) => p.dataKey === "transferFee" && p.payload?.transfer); // eslint-disable-line @typescript-eslint/no-explicit-any
+  if (transferEntry) {
+    const t = transferEntry.payload.transfer as PlayerTransfer;
+    return (
+      <div className="rounded-xl bg-[#0e1f16]/95 backdrop-blur-xl border border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.4)] px-3.5 py-2.5 text-[13px]">
+        <div className="font-semibold text-[#e8f0ec]">
+          {t.from_club_name} <span className="text-[#4ade80]">→</span> {t.to_club_name}
+        </div>
+        <div className="text-[#6b8a78] text-[11px] mt-0.5">
+          {formatFee(t.fee_eur)}
+        </div>
+      </div>
+    );
+  }
+
+  // Otherwise show market value
+  const valueEntry = payload.find((p: any) => p.dataKey === "value" && p.value != null); // eslint-disable-line @typescript-eslint/no-explicit-any
+  if (valueEntry) {
+    return (
+      <div className="rounded-xl bg-[#0e1f16]/95 backdrop-blur-xl border border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.4)] px-3 py-1.5 text-[12px]">
+        <span className="text-[#e8f0ec] font-data tabular-nums">{formatFee(Number(valueEntry.value) * 100)}</span>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+/** Market value chart with transfer fee dots. */
 export function ValueChart({ valuations, transfers }: ValueChartProps) {
   const data = useMemo(
     () => valuations.map((v) => ({
       date: v.date,
-      value: v.value_eur / 100, // cents to EUR
+      value: v.value_eur / 100,
       label: new Date(v.date).toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+      transferFee: null as number | null,
+      transfer: undefined as PlayerTransfer | undefined,
     })),
     [valuations],
   );
 
-  // Transfer dates for reference lines
-  const transferDates = useMemo(
+  const transferDots = useMemo(
     () => transfers
-      .filter((t) => t.transfer_date)
+      .filter((t) => t.transfer_date && t.fee_eur !== null && t.fee_eur > 0 && !t.fee_is_loan)
       .map((t) => ({
         date: t.transfer_date!,
-        label: `→ ${t.to_club_name}`,
-        fee: t.fee_eur,
+        value: null as number | null,
+        transferFee: (t.fee_eur ?? 0) / 100,
+        label: new Date(t.transfer_date!).toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+        transfer: t,
       })),
     [transfers],
   );
+
+  const mergedData = useMemo(() => {
+    const all = [...data, ...transferDots];
+    all.sort((a, b) => a.date.localeCompare(b.date));
+    return all;
+  }, [data, transferDots]);
 
   if (data.length === 0) return null;
 
   return (
     <div className="rounded-lg border border-white/[0.04] bg-white/[0.01] p-4">
       <ResponsiveContainer width="100%" height={250}>
-        <AreaChart data={data} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+        <ComposedChart data={mergedData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
           <defs>
             <linearGradient id="valueGradient" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#4ade80" stopOpacity={0.3} />
@@ -65,41 +107,18 @@ export function ValueChart({ valuations, transfers }: ValueChartProps) {
             axisLine={false}
             width={60}
           />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "rgba(14, 31, 22, 0.95)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: "12px",
-              fontSize: "12px",
-              color: "#e8f0ec",
-            }}
-            formatter={(value: unknown) => [formatFee(Number(value) * 100), "Value"]}
-            labelFormatter={(label: unknown) => String(label)}
-          />
+          <Tooltip content={<ChartTooltip />} />
           <Area
             type="monotone"
             dataKey="value"
             stroke="#4ade80"
             strokeWidth={2}
             fill="url(#valueGradient)"
+            connectNulls
           />
-          {transferDates.map((t) => (
-            <ReferenceLine
-              key={t.date}
-              x={new Date(t.date).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
-              stroke="rgba(239, 68, 68, 0.4)"
-              strokeDasharray="3 3"
-              label={{
-                value: "●",
-                position: "top",
-                fill: "#ef4444",
-                fontSize: 14,
-              }}
-            />
-          ))}
-        </AreaChart>
+          <Scatter dataKey="transferFee" fill="#ef4444" r={6} />
+        </ComposedChart>
       </ResponsiveContainer>
-      {/* Transfer legend */}
       <div className="flex items-center gap-4 mt-2 px-2">
         <div className="flex items-center gap-1.5 text-[10px] text-[#6b8a78]">
           <div className="w-3 h-0.5 bg-[#4ade80] rounded" />
@@ -107,7 +126,7 @@ export function ValueChart({ valuations, transfers }: ValueChartProps) {
         </div>
         <div className="flex items-center gap-1.5 text-[10px] text-[#6b8a78]">
           <span className="text-red-400 text-[12px]">●</span>
-          Transfer
+          Transfer fee
         </div>
       </div>
     </div>
