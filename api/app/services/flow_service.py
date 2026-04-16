@@ -43,6 +43,14 @@ def _fast_path(db: Session, filters: TransferFilters) -> CountryFlowsResponse:
     if windows is not None:
         query = query.filter(CountryTransferFlow.transfer_window.in_(windows))
 
+    # Country filter — only flows involving at least one of the specified countries
+    if filters.country_id_list:
+        from sqlalchemy import or_
+        query = query.filter(or_(
+            CountryTransferFlow.from_country_id.in_(filters.country_id_list),
+            CountryTransferFlow.to_country_id.in_(filters.country_id_list),
+        ))
+
     query = query.group_by(
         CountryTransferFlow.from_country_id,
         FromCountry.name,
@@ -83,6 +91,14 @@ def _slow_path(db: Session, filters: TransferFilters) -> CountryFlowsResponse:
     )
 
     query = apply_transfer_filters(query, filters, db)
+
+    # Country filter
+    if filters.country_id_list:
+        from sqlalchemy import or_
+        query = query.filter(or_(
+            FromClub.country_id.in_(filters.country_id_list),
+            ToClub.country_id.in_(filters.country_id_list),
+        ))
 
     query = query.group_by(
         FromClub.country_id,

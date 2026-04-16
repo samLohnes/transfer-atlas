@@ -17,6 +17,17 @@ class TransferFilters:
     position_group: str | None = Query(None, description="Comma-separated: GK, DEF, MID, FWD")
     age_min: int | None = Query(None, description="Minimum player age at transfer")
     age_max: int | None = Query(None, description="Maximum player age at transfer")
+    country_ids: str | None = Query(None, description="Comma-separated country IDs to filter flows involving these countries")
+
+    @property
+    def country_id_list(self) -> list[int] | None:
+        """Parse comma-separated country_ids into a list of ints."""
+        if not self.country_ids:
+            return None
+        try:
+            return [int(c.strip()) for c in self.country_ids.split(",") if c.strip()]
+        except ValueError:
+            return None
 
     @property
     def position_groups(self) -> list[str] | None:
