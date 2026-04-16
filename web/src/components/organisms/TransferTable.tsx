@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import { EmptyState } from "@/components/molecules/EmptyState";
 import { formatFee, formatCount, formatDate } from "@/lib/format";
@@ -71,14 +72,20 @@ export function TransferTable({
             {items.map((t) => (
               <tr key={t.transfer_id} className="border-t border-white/[0.03] hover:bg-white/[0.03] transition-colors">
                 <td className="px-3 py-2">
-                  {t.player_transfermarkt_url ? (
-                    <a href={t.player_transfermarkt_url} target="_blank" rel="noopener noreferrer" className="text-[#4ade80]/80 hover:text-[#4ade80] inline-flex items-center gap-1 transition-colors">
-                      {t.player_name}
-                      <ExternalLink className="h-2.5 w-2.5 opacity-40" />
-                    </a>
-                  ) : (
-                    <span className="text-[#c5dace]">{t.player_name}</span>
-                  )}
+                  <span className="inline-flex items-center gap-1">
+                    {t.player_id ? (
+                      <Link to={`/players/${t.player_id}`} className="text-[#4ade80]/80 hover:text-[#4ade80] transition-colors">
+                        {t.player_name}
+                      </Link>
+                    ) : (
+                      <span className="text-[#c5dace]">{t.player_name}</span>
+                    )}
+                    {t.player_transfermarkt_url && (
+                      <a href={t.player_transfermarkt_url} target="_blank" rel="noopener noreferrer" className="text-[#6b8a78] hover:text-[#4ade80] transition-colors" title="View on Transfermarkt">
+                        <ExternalLink className="h-2.5 w-2.5" />
+                      </a>
+                    )}
+                  </span>
                 </td>
                 <td className="px-3 py-2 text-[#8fa898] truncate max-w-[120px]">{t.from_club_name}</td>
                 <td className="px-3 py-2 text-[#8fa898] truncate max-w-[120px]">{t.to_club_name}</td>

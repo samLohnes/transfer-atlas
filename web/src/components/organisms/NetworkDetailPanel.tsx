@@ -22,6 +22,7 @@ export interface NetworkDetailPanelProps {
 function toTransferRows(transfers: NetworkTransfer[], clubName: string, centerClubName: string): TransferRow[] {
   return transfers.map((t) => ({
     transfer_id: t.transfer_id,
+    player_id: 0, // Not available from network API
     player_name: t.player_name,
     player_transfermarkt_url: t.player_transfermarkt_url,
     from_club_name: t.direction === "bought" ? clubName : centerClubName,

@@ -1,6 +1,7 @@
 /** An individual transfer record in the detail panel. */
 export interface TransferRow {
   transfer_id: number;
+  player_id: number;
   player_name: string;
   player_transfermarkt_url: string | null;
   from_club_name: string;

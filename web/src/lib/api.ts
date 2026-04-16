@@ -1,4 +1,5 @@
 import type { FilterState } from "@/types/filter";
+import type { PlayerDetail, PlayerSearchResult } from "@/types/player";
 import type {
   ClubNetworkExpandResponse,
   ClubNetworkResponse,
@@ -94,4 +95,13 @@ export async function searchClubs(query: string, limit = 10): Promise<ClubSearch
 
 export async function fetchWindows(): Promise<WindowsResponse> {
   return fetchJson<WindowsResponse>(buildUrl("/filters/windows"));
+}
+
+export async function searchPlayers(query: string, limit = 10): Promise<{ players: PlayerSearchResult[] }> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  return fetchJson<{ players: PlayerSearchResult[] }>(buildUrl("/players/search", params));
+}
+
+export async function fetchPlayerDetail(playerId: number): Promise<PlayerDetail> {
+  return fetchJson<PlayerDetail>(buildUrl(`/players/${playerId}`));
 }
