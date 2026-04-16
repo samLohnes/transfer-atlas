@@ -55,7 +55,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 DATABASE_URL=postgresql://transfer_atlas:your_password_here@localhost:5432/transfer_atlas alembic upgrade head
 
-# Run the data pipeline (downloads ~60MB of CSV data, can take a few minues on initial setup)
+# Run the data pipeline (downloads ~60MB of CSV data, takes about a minute on my computer, maybe more, maybe less for yours)
 DATABASE_URL=postgresql://transfer_atlas:your_password_here@localhost:5432/transfer_atlas python -m pipeline.run
 ```
 
