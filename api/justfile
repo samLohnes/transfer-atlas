@@ -52,6 +52,10 @@ pipeline:
 pipeline-force:
     DATABASE_URL={{db_url}} python -m pipeline.run --force
 
+# Run data quality checks against the current database state (read-only)
+quality:
+    DATABASE_URL={{db_url}} python -c "from app.database import SessionLocal; from pipeline.quality import run_quality_checks, log_report; import logging; logging.basicConfig(level=logging.INFO, format='%(levelname)-5s %(message)s'); s = SessionLocal(); log_report(run_quality_checks(s)); s.close()"
+
 # ---- Testing ----
 
 # Run the full pytest suite
