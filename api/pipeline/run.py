@@ -4,10 +4,6 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-
-# Add the api/ directory to sys.path so imports work when run as a module
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
 from app.database import SessionLocal, engine
 from app.models import PipelineMetadata
 from pipeline.aggregate import rebuild_club_summaries, rebuild_country_flows
@@ -20,6 +16,12 @@ from pipeline.ingest import (
     ingest_valuations,
     update_metadata,
 )
+from pipeline.quality import log_report, run_quality_checks
+
+# Add the api/ directory to sys.path so imports work when run as a module
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,6 +51,11 @@ def main() -> None:
         action="store_true",
         help="Re-run ingestion even if the source commit hash is unchanged",
     )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit with error code if any data quality check fails (default: log only)",
+    )
     args = parser.parse_args()
 
     logger.info("=== TransferAtlas Data Pipeline ===")
@@ -68,11 +75,11 @@ def main() -> None:
             return
 
         # Step 1: Fetch data
-        logger.info("Step 1/7: Fetching datasets...")
+        logger.info("Step 1/8: Fetching datasets...")
         data_dir = fetch_datasets()
 
         # Step 2: Ingest competitions (resolves league transfermarkt_ids + builds comp→country map)
-        logger.info("Step 2/7: Processing competitions...")
+        logger.info("Step 2/8: Processing competitions...")
         session = SessionLocal()
         try:
             comp_country_map = ingest_competitions(session, data_dir)
@@ -80,7 +87,7 @@ def main() -> None:
             session.close()
 
         # Step 3: Ingest players
-        logger.info("Step 3/7: Ingesting players...")
+        logger.info("Step 3/8: Ingesting players...")
         session = SessionLocal()
         try:
             total_records += ingest_players(session, data_dir)
@@ -88,7 +95,7 @@ def main() -> None:
             session.close()
 
         # Step 4: Ingest clubs
-        logger.info("Step 4/7: Ingesting clubs...")
+        logger.info("Step 4/8: Ingesting clubs...")
         session = SessionLocal()
         try:
             total_records += ingest_clubs(session, data_dir, comp_country_map)
@@ -96,7 +103,7 @@ def main() -> None:
             session.close()
 
         # Step 5: Ingest transfers
-        logger.info("Step 5/7: Ingesting transfers...")
+        logger.info("Step 5/8: Ingesting transfers...")
         session = SessionLocal()
         try:
             total_records += ingest_transfers(session, data_dir)
@@ -104,7 +111,7 @@ def main() -> None:
             session.close()
 
         # Step 6: Ingest valuations
-        logger.info("Step 6/7: Ingesting valuations...")
+        logger.info("Step 6/8: Ingesting valuations...")
         session = SessionLocal()
         try:
             total_records += ingest_valuations(session, data_dir)
@@ -112,7 +119,7 @@ def main() -> None:
             session.close()
 
         # Step 7: Rebuild aggregations
-        logger.info("Step 7/7: Rebuilding aggregation tables...")
+        logger.info("Step 7/8: Rebuilding aggregation tables...")
         rebuild_country_flows(engine)
         rebuild_club_summaries(engine)
 
@@ -120,6 +127,22 @@ def main() -> None:
         session = SessionLocal()
         try:
             update_metadata(session, total_records, commit_hash)
+        finally:
+            session.close()
+
+        # Step 8: Data quality checks
+        logger.info("Step 8/8: Running data quality checks...")
+        session = SessionLocal()
+        try:
+            report = run_quality_checks(session)
+            log_report(report)
+            if args.strict and report.errors:
+                logger.error(
+                    "Pipeline completed with %d failing quality check(s). "
+                    "--strict enabled → exiting with error code.",
+                    len(report.errors),
+                )
+                sys.exit(2)
         finally:
             session.close()
 

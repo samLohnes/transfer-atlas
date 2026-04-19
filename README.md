@@ -64,6 +64,25 @@ The app will be available at:
 - **API:** http://localhost:8000
 - **API Docs:** http://localhost:8000/docs
 
+## Testing
+
+The backend has a pytest suite covering the ingestion pipeline — per-function unit tests, schema validation, change detection, and end-to-end tests that exercise the full ingest chain against fixture CSVs. Tests run against an in-memory SQLite database, so no Docker or external services are required.
+
+```bash
+cd api
+
+# Run the full suite (~0.5s)
+python3 -m pytest tests/ -v
+
+# Run only the end-to-end pipeline tests
+python3 -m pytest tests/test_ingest.py::TestFullPipelineE2E -v
+
+# Run a single test
+python3 -m pytest tests/test_ingest.py::TestFullPipelineE2E::test_rerun_is_idempotent -v
+```
+
+The aggregation rebuild (`rebuild_country_flows`, `rebuild_club_summaries`) uses PostgreSQL-specific SQL that SQLite can't execute, so it's validated through live pipeline runs rather than unit tests.
+
 ## Data
 
 TransferAtlas tracks transfers across 15 leagues in 12 countries:
