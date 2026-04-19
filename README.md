@@ -31,38 +31,77 @@ All views share global filters for time range, transfer type, fee range, player 
 
 ### Prerequisites
 
-- Docker Desktop
-- Node.js 20+
-- Python 3.13+
+- **Docker Desktop** — runs the database, API, and web containers
+- **Python 3.13+** — `python3.13` must be on your PATH (needed for the local venv that runs migrations and the data pipeline)
+- **[just](https://github.com/casey/just)** — recommended task runner (`brew install just`). All commands below use it; a manual fallback is in the last subsection.
+- **Node.js 20+** — only required if you want to run the frontend outside Docker
 
-### Setup
+### 1. Clone and configure
 
 ```bash
-# Clone the repo
 git clone https://github.com/sam-lohnes/transfer-atlas.git
 cd transfer-atlas
-
-# Copy environment config
 cp .env.example .env
+```
 
-# Start all services
+Open `.env` and set a value for `POSTGRES_PASSWORD`. Update `DATABASE_URL` to use the same password so the in-container API can connect.
+
+### 2. Start the Docker services
+
+```bash
 docker compose up --build -d
+docker compose ps
+```
 
-# Run database migrations
+Wait until the `db` service reports `healthy` before moving on — host-side commands in the next step connect to Postgres on `localhost:5432` and will fail if it isn't up yet.
+
+### 3. Install Python deps and run migrations
+
+```bash
+cd api
+just setup                  # creates .venv, installs requirements.txt
+source .venv/bin/activate
+just migrate                # alembic upgrade head
+```
+
+`just` reads credentials from the repo-root `.env` automatically.
+
+### 4. Load the data
+
+```bash
+just pipeline               # ~60MB download, ~1 minute on a warm connection
+```
+
+This downloads CSVs from Transfermarkt Datasets and populates every table. You only need to re-run it when upstream data changes (the pipeline exits early otherwise — use `just pipeline-force` to override).
+
+### 5. Open the app
+
+- **Frontend:** http://localhost:3000
+- **API:** http://localhost:8000
+- **API Docs:** http://localhost:8000/docs
+
+If the map view loads with country arcs, you're done.
+
+### Stopping
+
+```bash
+docker compose down         # stop containers, keep the database volume
+docker compose down -v      # …and wipe the database (forces a full re-ingest next time)
+```
+
+### Manual commands (without `just`)
+
+If you'd rather not install `just`, the same steps as raw commands — substitute `<password>` with the `POSTGRES_PASSWORD` value you set in `.env`:
+
+```bash
 cd api
 python3.13 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-DATABASE_URL=postgresql://transfer_atlas:your_password_here@localhost:5432/transfer_atlas alembic upgrade head
 
-# Run the data pipeline (downloads ~60MB of CSV data, takes about a minute on my computer, maybe more, maybe less for yours)
-DATABASE_URL=postgresql://transfer_atlas:your_password_here@localhost:5432/transfer_atlas python -m pipeline.run
+DATABASE_URL=postgresql://transfer_atlas:<password>@localhost:5432/transfer_atlas alembic upgrade head
+DATABASE_URL=postgresql://transfer_atlas:<password>@localhost:5432/transfer_atlas python -m pipeline.run
 ```
-
-The app will be available at:
-- **Frontend:** http://localhost:3000
-- **API:** http://localhost:8000
-- **API Docs:** http://localhost:8000/docs
 
 ## Testing
 
