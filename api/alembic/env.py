@@ -11,6 +11,7 @@ from app.database import Base
 from app.models import (  # noqa: F401 — import to register models with Base.metadata
     Country, League, Club, Player, Transfer,
     PlayerValuation, CountryTransferFlow, ClubTransferSummary, PipelineMetadata,
+    Appearance, ScoringVersion, FeeTierThreshold, TransferGrade, TransferFeature,
 )
 
 config = context.config

@@ -2,14 +2,14 @@
 
 from datetime import date
 
-from sqlalchemy import Date, Integer, String
+from sqlalchemy import BigInteger, Date, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
 
 class Player(Base):
-    """A football player with position and nationality data."""
+    """A football player with position, nationality, physical profile, and market-value snapshots."""
 
     __tablename__ = "players"
 
@@ -23,3 +23,14 @@ class Player(Base):
         String(50), unique=True, nullable=True
     )
     transfermarkt_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    height_in_cm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    foot: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    international_caps: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=0
+    )
+    international_goals: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, default=0
+    )
+    current_market_value_eur: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    peak_market_value_eur: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    contract_expiration_date: Mapped[date | None] = mapped_column(Date, nullable=True)
