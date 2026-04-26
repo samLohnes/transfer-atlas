@@ -260,7 +260,11 @@ def get_club_comparison(
             continue
 
         q = (
-            db.query(TransferGrade, Transfer, Player.name.label("player_name"))
+            db.query(
+                TransferGrade, Transfer,
+                Player.id.label("player_id"),
+                Player.name.label("player_name"),
+            )
             .join(Transfer, TransferGrade.transfer_id == Transfer.id)
             .join(Player, Transfer.player_id == Player.id)
             .filter(Transfer.to_club_id == club_id)
@@ -284,35 +288,37 @@ def get_club_comparison(
             ))
             continue
 
-        composite_values = [float(g.composite_score) for g, _, _ in rows]
+        composite_values = [float(g.composite_score) for g, _, _, _ in rows]
         avg = sum(composite_values) / len(composite_values)
-        spend = sum(int(t.fee_eur or 0) for _, t, _ in rows)
+        spend = sum(int(t.fee_eur or 0) for _, t, _, _ in rows)
 
         best_row = max(rows, key=lambda r: r[0].composite_score)
         worst_row = min(rows, key=lambda r: r[0].composite_score)
         best = ClubBestWorst(
             transfer_id=best_row[0].transfer_id,
-            player_name=best_row[2],
+            player_id=best_row[2],
+            player_name=best_row[3],
             composite_score=float(best_row[0].composite_score),
             letter_grade=best_row[0].letter_grade,
             fee_eur=int(best_row[1].fee_eur or 0),
         )
         worst = ClubBestWorst(
             transfer_id=worst_row[0].transfer_id,
-            player_name=worst_row[2],
+            player_id=worst_row[2],
+            player_name=worst_row[3],
             composite_score=float(worst_row[0].composite_score),
             letter_grade=worst_row[0].letter_grade,
             fee_eur=int(worst_row[1].fee_eur or 0),
         )
 
-        distribution = Counter(g.letter_grade for g, _, _ in rows)
+        distribution = Counter(g.letter_grade for g, _, _, _ in rows)
         full_distribution = {grade: distribution.get(grade, 0) for grade in (
             "A", "B+", "B", "C+", "C", "D", "F",
         )}
 
         # Timeline: average grade per transfer window, ordered chronologically
         per_window: dict[str, list[float]] = {}
-        for g, t, _ in rows:
+        for g, t, _, _ in rows:
             per_window.setdefault(t.transfer_window, []).append(float(g.composite_score))
         timeline = [
             ClubTimeline(
@@ -401,6 +407,7 @@ def get_grade_summary_for_player(db: Session, player_id: int) -> PlayerGradeSumm
     worst_row = min(rows, key=lambda r: r[0].composite_score)
     best = ClubBestWorst(
         transfer_id=best_row[0].transfer_id,
+        player_id=player_id,
         player_name="",  # not needed in the player's own summary
         composite_score=float(best_row[0].composite_score),
         letter_grade=best_row[0].letter_grade,
@@ -408,6 +415,7 @@ def get_grade_summary_for_player(db: Session, player_id: int) -> PlayerGradeSumm
     )
     worst = ClubBestWorst(
         transfer_id=worst_row[0].transfer_id,
+        player_id=player_id,
         player_name="",
         composite_score=float(worst_row[0].composite_score),
         letter_grade=worst_row[0].letter_grade,

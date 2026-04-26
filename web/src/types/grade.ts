@@ -58,6 +58,7 @@ export interface TopGradesResponse {
 
 export interface ClubBestWorst {
   transfer_id: number;
+  player_id: number;
   player_name: string;
   composite_score: number;
   letter_grade: string;

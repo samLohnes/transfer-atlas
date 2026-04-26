@@ -8,10 +8,14 @@ import type { ClubSearchResult } from "@/types/club";
 
 interface ClubSearchBarProps {
   className?: string;
+  /** Optional override — when provided the bar calls this instead of navigating to /network/{id}. */
+  onSelect?: (club: ClubSearchResult) => void;
+  /** Override the placeholder text. */
+  placeholder?: string;
 }
 
 /** Text input with autocomplete dropdown — frosted glass style. */
-export function ClubSearchBar({ className = "" }: ClubSearchBarProps) {
+export function ClubSearchBar({ className = "", onSelect, placeholder = "Search clubs..." }: ClubSearchBarProps) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ClubSearchResult[]>([]);
@@ -48,7 +52,11 @@ export function ClubSearchBar({ className = "" }: ClubSearchBarProps) {
   function handleSelect(club: ClubSearchResult) {
     setQuery("");
     setIsOpen(false);
-    navigate(`/network/${club.club_id}`);
+    if (onSelect) {
+      onSelect(club);
+    } else {
+      navigate(`/network/${club.club_id}`);
+    }
   }
 
   return (
@@ -60,7 +68,7 @@ export function ClubSearchBar({ className = "" }: ClubSearchBarProps) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => results.length > 0 && setIsOpen(true)}
-          placeholder="Search clubs..."
+          placeholder={placeholder}
           className="w-full rounded-xl bg-white/[0.03] border border-white/[0.06] pl-10 pr-4 py-2.5 text-[13px] text-[#e8f0ec] placeholder-[#4a6555] focus:outline-none focus:border-[#4ade80]/30 focus:bg-white/[0.05] focus:shadow-[0_0_20px_rgba(74,222,128,0.08)] transition-all duration-200"
         />
         {isLoading && <Spinner size="sm" className="absolute right-3.5 top-1/2 -translate-y-1/2" />}
