@@ -1,0 +1,6 @@
+{
+  "minutes": {
+    "competition_whitelist": [],
+    "_note": "Populate with Transfermarkt competition_id values for competitive first-team competitions only. Excludes friendlies, reserves, U-23/U-21/youth competitions, and testimonials. While this list is empty, Task 3 / Task 4 log a warning and skip the competition filter (i.e. every appearance counts), which inflates minutes_pct denominators. Task 4 owns the rest of this file (component_weights, sigmoid_scales, fee_tiers, default_value_rates)."
+  }
+}

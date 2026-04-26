@@ -19,6 +19,7 @@ CSV_FILES = [
     "clubs",
     "competitions",
     "player_valuations",
+    "appearances",
 ]
 
 BASE_URL = "https://pub-e682421888d945d684bcae8890b0ec20.r2.dev/data"

@@ -16,6 +16,7 @@ from pipeline.ingest import (
     ingest_valuations,
     update_metadata,
 )
+from pipeline.ingest_appearances import ingest_appearances
 from pipeline.quality import log_report, run_quality_checks
 
 # Add the api/ directory to sys.path so imports work when run as a module
@@ -75,11 +76,11 @@ def main() -> None:
             return
 
         # Step 1: Fetch data
-        logger.info("Step 1/8: Fetching datasets...")
+        logger.info("Step 1/9: Fetching datasets...")
         data_dir = fetch_datasets()
 
         # Step 2: Ingest competitions (resolves league transfermarkt_ids + builds comp→country map)
-        logger.info("Step 2/8: Processing competitions...")
+        logger.info("Step 2/9: Processing competitions...")
         session = SessionLocal()
         try:
             comp_country_map = ingest_competitions(session, data_dir)
@@ -87,7 +88,7 @@ def main() -> None:
             session.close()
 
         # Step 3: Ingest players
-        logger.info("Step 3/8: Ingesting players...")
+        logger.info("Step 3/9: Ingesting players...")
         session = SessionLocal()
         try:
             total_records += ingest_players(session, data_dir)
@@ -95,31 +96,39 @@ def main() -> None:
             session.close()
 
         # Step 4: Ingest clubs
-        logger.info("Step 4/8: Ingesting clubs...")
+        logger.info("Step 4/9: Ingesting clubs...")
         session = SessionLocal()
         try:
             total_records += ingest_clubs(session, data_dir, comp_country_map)
         finally:
             session.close()
 
-        # Step 5: Ingest transfers
-        logger.info("Step 5/8: Ingesting transfers...")
+        # Step 5: Ingest appearances (needs players + clubs; ~1.8M rows, chunked)
+        logger.info("Step 5/9: Ingesting appearances...")
+        session = SessionLocal()
+        try:
+            total_records += ingest_appearances(session, data_dir)
+        finally:
+            session.close()
+
+        # Step 6: Ingest transfers
+        logger.info("Step 6/9: Ingesting transfers...")
         session = SessionLocal()
         try:
             total_records += ingest_transfers(session, data_dir)
         finally:
             session.close()
 
-        # Step 6: Ingest valuations
-        logger.info("Step 6/8: Ingesting valuations...")
+        # Step 7: Ingest valuations
+        logger.info("Step 7/9: Ingesting valuations...")
         session = SessionLocal()
         try:
             total_records += ingest_valuations(session, data_dir)
         finally:
             session.close()
 
-        # Step 7: Rebuild aggregations
-        logger.info("Step 7/8: Rebuilding aggregation tables...")
+        # Step 8: Rebuild aggregations
+        logger.info("Step 8/9: Rebuilding aggregation tables...")
         rebuild_country_flows(engine)
         rebuild_club_summaries(engine)
 
@@ -130,8 +139,8 @@ def main() -> None:
         finally:
             session.close()
 
-        # Step 8: Data quality checks
-        logger.info("Step 8/8: Running data quality checks...")
+        # Step 9: Data quality checks
+        logger.info("Step 9/9: Running data quality checks...")
         session = SessionLocal()
         try:
             report = run_quality_checks(session)
