@@ -25,12 +25,11 @@ class Player(Base):
     transfermarkt_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     height_in_cm: Mapped[int | None] = mapped_column(Integer, nullable=True)
     foot: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    international_caps: Mapped[int | None] = mapped_column(
-        Integer, nullable=True, default=0
-    )
-    international_goals: Mapped[int | None] = mapped_column(
-        Integer, nullable=True, default=0
-    )
+    # No ORM-level `default=0`: NULL means "unknown caps for this player".
+    # The migration's server_default="0" backfilled existing rows and was then dropped,
+    # so new pipeline writes preserve NULL when the CSV has no value.
+    international_caps: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    international_goals: Mapped[int | None] = mapped_column(Integer, nullable=True)
     current_market_value_eur: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     peak_market_value_eur: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     contract_expiration_date: Mapped[date | None] = mapped_column(Date, nullable=True)

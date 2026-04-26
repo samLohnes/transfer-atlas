@@ -127,6 +127,10 @@ REQUIRED_COLUMNS: dict[str, set[str]] = {
         "from_club_id", "to_club_id", "transfer_fee",
     },
     "player_valuations.csv": {"player_id", "date", "market_value_in_eur"},
+    "appearances.csv": {
+        "player_id", "game_id", "player_club_id", "competition_id", "date",
+        "minutes_played", "goals", "assists", "yellow_cards", "red_cards",
+    },
 }
 
 KNOWN_COLUMNS: dict[str, set[str]] = {
@@ -159,6 +163,11 @@ KNOWN_COLUMNS: dict[str, set[str]] = {
     "player_valuations.csv": {
         "player_id", "date", "market_value_in_eur", "current_club_name",
         "current_club_id", "player_club_domestic_competition_id",
+    },
+    "appearances.csv": {
+        "appearance_id", "player_id", "game_id", "player_club_id",
+        "player_current_club_id", "player_name", "competition_id", "date",
+        "yellow_cards", "red_cards", "goals", "assists", "minutes_played",
     },
 }
 
@@ -206,6 +215,56 @@ def _safe_int_str(value: object) -> str | None:
     if pd.isna(value):
         return None
     return str(int(value))
+
+
+def _coerce_int_nullable(value: object) -> int | None:
+    """Coerce a value to int, preserving None for NaN/missing (unlike `_coerce_int_default`)."""
+    if value is None or pd.isna(value) or value == "":
+        return None
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _coerce_int_default(value: object, default: int = 0) -> int:
+    """Coerce a value to int, falling back to `default` for NaN/missing/unparseable."""
+    if value is None or pd.isna(value) or value == "":
+        return default
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def _normalize_foot(value: object) -> str | None:
+    """Normalize preferred-foot to title case ('Left', 'Right', 'Both'). Unknown → None."""
+    if value is None or pd.isna(value) or value == "":
+        return None
+    s = str(value).strip().lower()
+    if s in ("left", "right", "both"):
+        return s.title()
+    return None
+
+
+def _market_value_to_cents(value: object) -> int | None:
+    """Convert a EUR numeric (e.g. 75000000.0) to EUR cents (7500000000). NaN/empty → None."""
+    if value is None or pd.isna(value) or value == "":
+        return None
+    try:
+        return int(float(value) * 100)
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_date(value: object) -> date | None:
+    """Parse a date value, tolerating malformed strings via pandas' `errors='coerce'`."""
+    if value is None or pd.isna(value) or value == "":
+        return None
+    dt = pd.to_datetime(value, errors="coerce")
+    if pd.isna(dt):
+        return None
+    return dt.date()
 
 
 def _get_or_create_country(session: Session, name: str, country_cache: dict[str, int]) -> int:
@@ -325,6 +384,19 @@ def ingest_players(session: Session, data_dir: Path) -> int:
                 "position_group": position_group,
                 "nationality": nationality,
                 "transfermarkt_url": url,
+                "height_in_cm": _coerce_int_nullable(getattr(row, "height_in_cm", None)),
+                "foot": _normalize_foot(getattr(row, "foot", None)),
+                "international_caps": _coerce_int_nullable(getattr(row, "international_caps", None)),
+                "international_goals": _coerce_int_nullable(getattr(row, "international_goals", None)),
+                "current_market_value_eur": _market_value_to_cents(
+                    getattr(row, "market_value_in_eur", None)
+                ),
+                "peak_market_value_eur": _market_value_to_cents(
+                    getattr(row, "highest_market_value_in_eur", None)
+                ),
+                "contract_expiration_date": _parse_date(
+                    getattr(row, "contract_expiration_date", None)
+                ),
             }
 
             if tm_id in existing_players:
