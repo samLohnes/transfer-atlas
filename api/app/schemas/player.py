@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel
 
+from app.schemas.grade import GradeBrief, PlayerGradeSummary
+
 
 class PlayerSearchItem(BaseModel):
     """A player search result."""
@@ -32,6 +34,7 @@ class PlayerTransfer(BaseModel):
     transfer_date: str | None
     transfer_window: str
     season: str
+    grade: GradeBrief | None = None
 
 
 class PlayerValuationPoint(BaseModel):
@@ -53,3 +56,4 @@ class PlayerDetailResponse(BaseModel):
     transfermarkt_url: str | None
     transfers: list[PlayerTransfer]
     valuations: list[PlayerValuationPoint]
+    grade_summary: PlayerGradeSummary | None = None

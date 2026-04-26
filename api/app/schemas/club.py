@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel
 
+from app.schemas.grade import GradeBrief
+
 
 class ClubSearchItem(BaseModel):
     """A club search result."""
@@ -55,6 +57,7 @@ class NetworkTransfer(BaseModel):
     direction: str
     position_group: str | None
     transfer_window: str
+    grade: GradeBrief | None = None
 
 
 class ClubEdge(BaseModel):

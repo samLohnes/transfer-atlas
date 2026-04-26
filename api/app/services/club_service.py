@@ -15,6 +15,7 @@ from app.schemas.club import (
     NetworkTransfer,
 )
 from app.schemas.filters import TransferFilters
+from app.services.grade_service import fetch_grade_briefs_for_transfers
 from app.services.transfer_query import apply_transfer_filters
 
 
@@ -178,6 +179,10 @@ def get_club_network_expanded(
     )
     counter_clubs_map = {c.id: c for c in db.query(Club).filter(Club.id.in_(counter_club_ids)).all()}
 
+    # Single bulk lookup attaches grades to every NetworkTransfer below.
+    all_transfer_ids = [t.id for t in bought_transfers] + [t.id for t in sold_transfers]
+    grade_briefs = fetch_grade_briefs_for_transfers(db, all_transfer_ids)
+
     for t in bought_transfers:
         cid = t.from_club_id
         if cid not in club_data:
@@ -195,6 +200,7 @@ def get_club_network_expanded(
             direction="bought",
             position_group=p.position_group if p else None,
             transfer_window=t.transfer_window,
+            grade=grade_briefs.get(t.id),
         ))
 
     for t in sold_transfers:
@@ -214,6 +220,7 @@ def get_club_network_expanded(
             direction="sold",
             position_group=p.position_group if p else None,
             transfer_window=t.transfer_window,
+            grade=grade_briefs.get(t.id),
         ))
 
     club_edges = [
