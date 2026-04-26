@@ -57,6 +57,15 @@ EXIT_RATIO_MIN_GROUP_SIZE = 10
 VALUE_CHANGE_PCT_MAX = Decimal("99999.99")    # Numeric(7,2)
 EXIT_RATIO_MAX = Decimal("999.9999")           # Numeric(7,4)
 
+# Transfermarkt occasionally records loan-backs as permanent fee=0 transfers
+# (e.g. Julián Álvarez 2022: River Plate → Man City paid, then a fee=0
+# "permanent" Man City → River Plate the next day, then a fee=0 return to
+# Man City five months later). When scanning for the real stint-end departure,
+# skip any fee=0 permanent departure followed by a return to the same buying
+# club within this window — those are misclassified loan-backs, not genuine
+# exits. Genuine free transfers (Bosman exits) have no such return.
+LOAN_BACK_RETURN_WINDOW_DAYS = 540
+
 
 @dataclass
 class StintInfo:
@@ -202,8 +211,14 @@ def _build_stint(
     the player leaves the buying club. Loan-out transfers do not end the stint;
     the player's loan-club appearances are naturally excluded by the
     `Appearance.club_id == stint.club_id` filter elsewhere.
+
+    Heuristic for misclassified loan-backs: Transfermarkt sometimes records a
+    loan-back as a permanent fee=0 transfer. We detect this by checking whether
+    the player returns to the same buying club within
+    `LOAN_BACK_RETURN_WINDOW_DAYS` of the candidate departure — if so we treat
+    it as a sub-stint and look at the next permanent departure instead.
     """
-    departures = sorted(
+    candidates = sorted(
         (
             t for t in player_transfers
             if (
@@ -215,6 +230,11 @@ def _build_stint(
         ),
         key=lambda t: t.transfer_date,
     )
+
+    departures = [
+        d for d in candidates
+        if not _is_misclassified_loan_back(d, transfer.to_club_id, player_transfers)
+    ]
 
     if departures:
         dep = departures[0]
@@ -238,6 +258,23 @@ def _build_stint(
         is_complete=False,
         entry_fee_eur=transfer.fee_eur,
         exit_fee_eur=None,
+    )
+
+
+def _is_misclassified_loan_back(
+    candidate: Transfer,
+    buying_club_id: int,
+    player_transfers: Sequence[Transfer],
+) -> bool:
+    """True when a fee=0 'permanent' departure is followed by a return to the buying club."""
+    if candidate.fee_eur not in (None, 0):
+        return False  # Real paid sale — never reclassify.
+    window_end = candidate.transfer_date + timedelta(days=LOAN_BACK_RETURN_WINDOW_DAYS)
+    return any(
+        t.to_club_id == buying_club_id
+        and t.transfer_date is not None
+        and candidate.transfer_date < t.transfer_date <= window_end
+        for t in player_transfers
     )
 
 

@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { GradeBadge } from "@/components/atoms/GradeBadge";
 import { GradeTooltip } from "@/components/molecules/GradeTooltip";
-import { fetchTransferGrade } from "@/lib/api";
-import type { GradeDetail } from "@/types/grade";
+import { useGradeDetail } from "@/hooks/useGradeDetail";
 
 interface GradeBadgeWithTooltipProps {
   transferId: number;
@@ -40,12 +39,10 @@ export function GradeBadgeWithTooltip({
   const navigate = useNavigate();
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cachedDetailRef = useRef<GradeDetail | null>(null);
 
   const [tooltipOpen, setTooltipOpen] = useState(false);
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
-  const [detail, setDetail] = useState<GradeDetail | null>(null);
-  const [loading, setLoading] = useState(false);
+  const { detail, loading } = useGradeDetail(transferId, tooltipOpen);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimeoutRef.current) {
@@ -70,24 +67,7 @@ export function GradeBadgeWithTooltip({
       setTooltipPos(computeTooltipPosition(anchorRef.current));
     }
     setTooltipOpen(true);
-
-    if (cachedDetailRef.current) {
-      setDetail(cachedDetailRef.current);
-      return;
-    }
-    setLoading(true);
-    fetchTransferGrade(transferId)
-      .then((d) => {
-        cachedDetailRef.current = d;
-        setDetail(d);
-      })
-      .catch(() => {
-        // Network failure leaves `detail` null; the tooltip degrades to
-        // showing the abbreviated header only. We intentionally don't surface
-        // the error to the user — a hover tooltip isn't worth a toast.
-      })
-      .finally(() => setLoading(false));
-  }, [transferId, clearHideTimer, computeTooltipPosition]);
+  }, [clearHideTimer, computeTooltipPosition]);
 
   const handleLeave = useCallback(() => {
     clearHideTimer();
