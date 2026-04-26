@@ -1,3 +1,4 @@
+import { GradeBadgeWithTooltip } from "@/components/molecules/GradeBadgeWithTooltip";
 import { formatFee, formatDate } from "@/lib/format";
 import type { TransferRow as TransferRowType } from "@/types/transfer";
 
@@ -35,6 +36,19 @@ export function TransferRow({ transfer }: TransferRowProps) {
       <td className="px-3 py-2 text-sm text-[#e8f0ec] tabular-nums text-right">
         {formatFee(transfer.fee_eur)}
         {transfer.fee_is_loan && <span className="ml-1 text-[#8fa898] text-xs">(loan)</span>}
+      </td>
+      <td className="px-2 py-2 text-center w-[70px]">
+        {transfer.grade ? (
+          <GradeBadgeWithTooltip
+            transferId={transfer.transfer_id}
+            letterGrade={transfer.grade.letter_grade}
+            compositeScore={transfer.grade.composite_score}
+            isComplete={transfer.grade.is_complete}
+            worthTheFee={transfer.grade.worth_the_fee}
+            playerId={transfer.player_id}
+            size="sm"
+          />
+        ) : null}
       </td>
       <td className="px-3 py-2 text-sm">
         {transfer.position_group && (

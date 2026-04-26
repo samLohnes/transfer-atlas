@@ -42,6 +42,7 @@ export interface NetworkTransfer {
   direction: "bought" | "sold";
   position_group: string | null;
   transfer_window: string;
+  grade?: import("./grade").GradeBrief | null;
 }
 
 /** A club-level edge in the expanded network graph. */

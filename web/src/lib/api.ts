@@ -10,6 +10,13 @@ import type {
   PipelineMetadata,
   WindowsResponse,
 } from "@/types/api";
+import type {
+  ClubComparisonResponse,
+  GradeDetail,
+  ScoringInfoResponse,
+  TopGradesParams,
+  TopGradesResponse,
+} from "@/types/grade";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
 
@@ -104,4 +111,55 @@ export async function searchPlayers(query: string, limit = 10): Promise<{ player
 
 export async function fetchPlayerDetail(playerId: number): Promise<PlayerDetail> {
   return fetchJson<PlayerDetail>(buildUrl(`/players/${playerId}`));
+}
+
+/**
+ * Fetch the full grade breakdown for a single transfer (used by the hover tooltip).
+ *
+ * Returns null when:
+ *   - 204: the transfer exists but isn't gradeable (free / loan / unscored)
+ *   - 404: the transfer doesn't exist (rare from a UI that already has the id)
+ * The hover tooltip falls back to its already-known compact grade in either case.
+ */
+export async function fetchTransferGrade(transferId: number): Promise<GradeDetail | null> {
+  const res = await fetch(buildUrl(`/transfers/${transferId}/grade`));
+  if (res.status === 204 || res.status === 404) {
+    return null;
+  }
+  if (!res.ok) {
+    throw new Error(`fetchTransferGrade ${transferId}: ${res.status} ${res.statusText}`);
+  }
+  return res.json() as Promise<GradeDetail>;
+}
+
+export async function fetchTopGrades(params: TopGradesParams = {}): Promise<TopGradesResponse> {
+  const qs = new URLSearchParams();
+  if (params.category) qs.set("category", params.category);
+  if (params.limit !== undefined) qs.set("limit", String(params.limit));
+  if (params.offset !== undefined) qs.set("offset", String(params.offset));
+  if (params.positionGroup) qs.set("position_group", params.positionGroup);
+  if (params.countryId !== undefined && params.countryId !== null) {
+    qs.set("country_id", String(params.countryId));
+  }
+  if (params.feeMin !== undefined && params.feeMin !== null) qs.set("fee_min", String(params.feeMin));
+  if (params.feeMax !== undefined && params.feeMax !== null) qs.set("fee_max", String(params.feeMax));
+  if (params.windowStart) qs.set("window_start", params.windowStart);
+  if (params.windowEnd) qs.set("window_end", params.windowEnd);
+  if (params.completedOnly !== undefined) qs.set("completed_only", String(params.completedOnly));
+  return fetchJson<TopGradesResponse>(buildUrl("/grades/top", qs));
+}
+
+export async function fetchClubComparison(
+  clubIds: number[],
+  windowStart?: string | null,
+  windowEnd?: string | null,
+): Promise<ClubComparisonResponse> {
+  const qs = new URLSearchParams({ club_ids: clubIds.join(",") });
+  if (windowStart) qs.set("window_start", windowStart);
+  if (windowEnd) qs.set("window_end", windowEnd);
+  return fetchJson<ClubComparisonResponse>(buildUrl("/grades/club-comparison", qs));
+}
+
+export async function fetchScoringInfo(): Promise<ScoringInfoResponse> {
+  return fetchJson<ScoringInfoResponse>(buildUrl("/grades/scoring-info"));
 }

@@ -34,6 +34,7 @@ function toTransferRows(transfers: NetworkTransfer[], clubName: string, centerCl
     position_group: t.position_group,
     transfer_window: t.transfer_window,
     transfer_date: null,
+    grade: t.grade ?? null,
   }));
 }
 

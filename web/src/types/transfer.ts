@@ -1,3 +1,5 @@
+import type { GradeBrief } from "./grade";
+
 /** An individual transfer record in the detail panel. */
 export interface TransferRow {
   transfer_id: number;
@@ -13,6 +15,7 @@ export interface TransferRow {
   position_group: string | null;
   transfer_window: string;
   transfer_date: string | null;
+  grade?: GradeBrief | null;
 }
 
 /** Paginated transfers response. */
