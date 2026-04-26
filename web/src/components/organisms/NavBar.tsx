@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Map, Network, User } from "lucide-react";
+import { ClipboardList, Map, Network, User } from "lucide-react";
 import { FreshnessBadge } from "@/components/molecules/FreshnessBadge";
 
 /** Top navigation bar with glass-morphism effect. */
@@ -30,6 +30,10 @@ export function NavBar() {
         <NavLink to="/network" className={linkClass}>
           <Network className="h-3.5 w-3.5" />
           Network
+        </NavLink>
+        <NavLink to="/grades" className={linkClass}>
+          <ClipboardList className="h-3.5 w-3.5" />
+          Grades
         </NavLink>
         <NavLink to="/players" className={linkClass}>
           <User className="h-3.5 w-3.5" />

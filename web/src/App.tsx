@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useState } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { NavBar } from "@/components/organisms/NavBar";
+import { GradesPage } from "@/components/pages/GradesPage";
 import { MapPage } from "@/components/pages/MapPage";
 import { NetworkGraphPage } from "@/components/pages/NetworkGraphPage";
 import { PlayerPage } from "@/components/pages/PlayerPage";
@@ -36,6 +37,7 @@ function App() {
             <Route path="/" element={<MapPage />} />
             <Route path="/network" element={<NetworkGraphPage />} />
             <Route path="/network/:clubId" element={<NetworkGraphPage />} />
+            <Route path="/grades" element={<GradesPage />} />
             <Route path="/players" element={<PlayerPage />} />
             <Route path="/players/:playerId" element={<PlayerPage />} />
           </Routes>

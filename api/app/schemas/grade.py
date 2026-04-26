@@ -70,6 +70,7 @@ class ClubBestWorst(BaseModel):
     """Single best- or worst-graded transfer for a club's report card."""
 
     transfer_id: int
+    player_id: int
     player_name: str
     composite_score: float
     letter_grade: str
