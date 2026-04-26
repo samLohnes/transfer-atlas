@@ -9,6 +9,7 @@ import {
   Tooltip,
 } from "recharts";
 import { formatFee } from "@/lib/format";
+import { getGradeColors } from "@/lib/gradeColors";
 import type { PlayerTransfer, PlayerValuation } from "@/types/player";
 
 interface ValueChartProps {
@@ -16,7 +17,9 @@ interface ValueChartProps {
   transfers: PlayerTransfer[];
 }
 
-/** Custom tooltip — shows transfer info when hovering a dot, value when hovering the line. */
+const NEUTRAL_DOT_COLOR = "#ef4444";
+
+/** Custom tooltip — shows transfer info (with grade) when hovering a dot, value when hovering the line. */
 function ChartTooltip({ active, payload }: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
   if (!active || !payload?.length) return null;
 
@@ -24,6 +27,7 @@ function ChartTooltip({ active, payload }: any) { // eslint-disable-line @typesc
   const transferEntry = payload.find((p: any) => p.dataKey === "transferFee" && p.payload?.transfer); // eslint-disable-line @typescript-eslint/no-explicit-any
   if (transferEntry) {
     const t = transferEntry.payload.transfer as PlayerTransfer;
+    const gradeColor = t.grade ? getGradeColors(t.grade.letter_grade) : null;
     return (
       <div className="rounded-xl bg-[#0e1f16]/95 backdrop-blur-xl border border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.4)] px-3.5 py-2.5 text-[13px]">
         <div className="font-semibold text-[#e8f0ec]">
@@ -32,6 +36,14 @@ function ChartTooltip({ active, payload }: any) { // eslint-disable-line @typesc
         <div className="text-[#6b8a78] text-[11px] mt-0.5">
           {formatFee(t.fee_eur)}
         </div>
+        {t.grade && gradeColor && (
+          <div className="mt-1.5 flex items-center gap-1.5 text-[11px]">
+            <span className="text-[#6b8a78]">Grade:</span>
+            <span className="font-semibold" style={{ color: gradeColor.bg }}>
+              {t.grade.letter_grade} ({Math.round(t.grade.composite_score)})
+            </span>
+          </div>
+        )}
       </div>
     );
   }
@@ -47,6 +59,16 @@ function ChartTooltip({ active, payload }: any) { // eslint-disable-line @typesc
   }
 
   return null;
+}
+
+
+/** Colored circle keyed off the transfer's grade tier — falls back to neutral red. */
+function GradedDot(props: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+  const { cx, cy, payload } = props;
+  if (cx == null || cy == null) return null;
+  const grade = (payload?.transfer as PlayerTransfer | undefined)?.grade ?? null;
+  const fill = grade ? getGradeColors(grade.letter_grade).bg : NEUTRAL_DOT_COLOR;
+  return <circle cx={cx} cy={cy} r={6} fill={fill} stroke="#0e1f16" strokeWidth={1.5} />;
 }
 
 /** Market value chart with transfer fee dots. */
@@ -116,7 +138,7 @@ export function ValueChart({ valuations, transfers }: ValueChartProps) {
             fill="url(#valueGradient)"
             connectNulls
           />
-          <Scatter dataKey="transferFee" fill="#ef4444" r={6} />
+          <Scatter dataKey="transferFee" shape={<GradedDot />} />
         </ComposedChart>
       </ResponsiveContainer>
       <div className="flex items-center gap-4 mt-2 px-2">
@@ -125,8 +147,8 @@ export function ValueChart({ valuations, transfers }: ValueChartProps) {
           Market value
         </div>
         <div className="flex items-center gap-1.5 text-[10px] text-[#6b8a78]">
-          <span className="text-red-400 text-[12px]">●</span>
-          Transfer fee
+          <span className="text-[12px]" style={{ color: NEUTRAL_DOT_COLOR }}>●</span>
+          Transfer (color = grade)
         </div>
       </div>
     </div>
