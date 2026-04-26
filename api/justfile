@@ -86,6 +86,14 @@ score:
     DATABASE_URL={{db_url}} .venv/bin/python -m ml.features
     DATABASE_URL={{db_url}} .venv/bin/python -m ml.run
 
+# Print a grade distribution + per-position summary (read-only).
+validate:
+    DATABASE_URL={{db_url}} .venv/bin/python -m ml.validate
+
+# Same, plus a histogram PNG written under api/models/.
+validate-png:
+    DATABASE_URL={{db_url}} .venv/bin/python -m ml.validate --histogram models/grade_distribution.png
+
 # ---- Testing ----
 
 # Run the full pytest suite

@@ -50,9 +50,14 @@ export function GradeBadge({
       : "—"
     : `${letterGrade} ${formatScore(compositeScore)}`;
 
+  const ariaLabel = incomplete
+    ? "Transfer grade not yet available"
+    : `Transfer grade: ${letterGrade}, ${formatScore(compositeScore)} out of 100${isComplete ? "" : ", in progress"}`;
+
   return (
     <span
-      role={interactive ? "button" : undefined}
+      role={interactive ? "button" : "img"}
+      aria-label={ariaLabel}
       tabIndex={interactive ? 0 : undefined}
       onClick={interactive ? onClick : undefined}
       onKeyDown={
