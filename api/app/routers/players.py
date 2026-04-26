@@ -12,6 +12,10 @@ from app.schemas.player import (
     PlayerTransfer,
     PlayerValuationPoint,
 )
+from app.services.grade_service import (
+    fetch_grade_briefs_for_transfers,
+    get_grade_summary_for_player,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["players"])
 
@@ -87,6 +91,10 @@ def player_detail(
         .all()
     )
 
+    # Grade enrichment: per-row briefs + the top-level grade_summary
+    grade_briefs = fetch_grade_briefs_for_transfers(db, [t.id for t in transfers])
+    grade_summary = get_grade_summary_for_player(db, player.id)
+
     return PlayerDetailResponse(
         player_id=player.id,
         name=player.name,
@@ -107,6 +115,7 @@ def player_detail(
                 transfer_date=t.transfer_date.isoformat() if t.transfer_date else None,
                 transfer_window=t.transfer_window,
                 season=t.season,
+                grade=grade_briefs.get(t.id),
             )
             for t in transfers
         ],
@@ -117,4 +126,5 @@ def player_detail(
             )
             for v in valuations
         ],
+        grade_summary=grade_summary,
     )

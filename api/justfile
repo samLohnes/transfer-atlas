@@ -56,6 +56,36 @@ pipeline-force:
 quality:
     DATABASE_URL={{db_url}} python -c "from app.database import SessionLocal; from pipeline.quality import run_quality_checks, log_report; import logging; logging.basicConfig(level=logging.INFO, format='%(levelname)-5s %(message)s'); s = SessionLocal(); log_report(run_quality_checks(s)); s.close()"
 
+# ---- Lint / syntax ----
+
+# Compile-check every .py in the project (no execution). Stdlib-only, no venv needed.
+lint:
+    python3 -m compileall -q app pipeline ml
+
+# ---- Grading pipeline ----
+# These recipes use the project venv explicitly so they work whether or not it's activated.
+
+# Compute and persist TransferFeature rows from raw appearances/valuations.
+features:
+    DATABASE_URL={{db_url}} .venv/bin/python -m ml.features
+
+# Compute grades and persist a new ScoringVersion + TransferGrade rows.
+grade:
+    DATABASE_URL={{db_url}} .venv/bin/python -m ml.run
+
+# Compute grades + log distribution without writing to the DB (read-only).
+grade-dry:
+    DATABASE_URL={{db_url}} .venv/bin/python -m ml.run --dry-run
+
+# Force fresh calibration of value-trajectory rates; persists like `just grade`.
+grade-recalibrate:
+    DATABASE_URL={{db_url}} .venv/bin/python -m ml.run --recalibrate
+
+# Recompute features then grades — convenience after `just pipeline`.
+score:
+    DATABASE_URL={{db_url}} .venv/bin/python -m ml.features
+    DATABASE_URL={{db_url}} .venv/bin/python -m ml.run
+
 # ---- Testing ----
 
 # Run the full pytest suite

@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel
 
+from app.schemas.grade import GradeBrief
+
 
 class CountryItem(BaseModel):
     """A country with geographic coordinates."""
@@ -54,6 +56,7 @@ class TransferItem(BaseModel):
     position_group: str | None
     transfer_window: str
     transfer_date: str | None
+    grade: GradeBrief | None = None
 
 
 class PaginatedTransfers(BaseModel):

@@ -1,6 +1,29 @@
 {
+  "component_weights": {
+    "minutes": 0.25,
+    "production": 0.25,
+    "value_trajectory": 0.25,
+    "financial_return": 0.25
+  },
+  "sigmoid_scales": {
+    "value_trajectory": 0.05,
+    "financial_return": 2.0
+  },
+  "fee_tiers": {
+    "boundaries": [0, 25, 50, 75, 90, 100],
+    "labels": ["budget", "mid-range", "upper-mid", "premium", "elite"]
+  },
   "minutes": {
-    "competition_whitelist": [],
-    "_note": "Populate with Transfermarkt competition_id values for competitive first-team competitions only. Excludes friendlies, reserves, U-23/U-21/youth competitions, and testimonials. While this list is empty, Task 3 / Task 4 log a warning and skip the competition filter (i.e. every appearance counts), which inflates minutes_pct denominators. Task 4 owns the rest of this file (component_weights, sigmoid_scales, fee_tiers, default_value_rates)."
-  }
+    "competition_whitelist": []
+  },
+  "min_comparison_group_size": 20,
+  "calibration_min_samples": 30,
+  "default_value_rates": {
+    "GK":  {"under_21": 0.12, "21_23": 0.08, "23_25": 0.04, "25_27": 0.02, "27_29": 0.00, "29_31": -0.03, "31_plus": -0.08},
+    "DEF": {"under_21": 0.15, "21_23": 0.10, "23_25": 0.05, "25_27": 0.02, "27_29": -0.03, "29_31": -0.08, "31_plus": -0.12},
+    "MID": {"under_21": 0.15, "21_23": 0.10, "23_25": 0.05, "25_27": 0.02, "27_29": -0.05, "29_31": -0.10, "31_plus": -0.15},
+    "FWD": {"under_21": 0.18, "21_23": 0.12, "23_25": 0.05, "25_27": 0.00, "27_29": -0.08, "29_31": -0.12, "31_plus": -0.18}
+  },
+  "phase3_ml_model_path": null,
+  "_note": "competition_whitelist remains empty until populated with real Transfermarkt competition_id values; while empty, Task 3 / Task 4 log a warning and skip the competition filter."
 }

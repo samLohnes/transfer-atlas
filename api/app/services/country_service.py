@@ -12,6 +12,7 @@ from app.schemas.country import (
     TransferItem,
 )
 from app.schemas.filters import TransferFilters
+from app.services.grade_service import fetch_grade_briefs_for_transfers
 from app.services.transfer_query import apply_transfer_filters, get_all_windows
 from app.services.windows import get_windows_in_range
 
@@ -209,6 +210,9 @@ def get_country_detail(
     offset = (page - 1) * page_size
     rows = transfer_query.offset(offset).limit(page_size).all()
 
+    # One indexed lookup attaches grades to all paginated transfers.
+    grade_briefs = fetch_grade_briefs_for_transfers(db, [r.id for r in rows])
+
     # Compute net spend
     total_spent = sum(r.total_spent for r in top_buyers) if top_buyers else 0
     total_received = sum(r.total_received for r in top_sellers) if top_sellers else 0
@@ -244,6 +248,7 @@ def get_country_detail(
                     position_group=r.position_group,
                     transfer_window=r.transfer_window,
                     transfer_date=r.transfer_date.isoformat() if r.transfer_date else None,
+                    grade=grade_briefs.get(r.id),
                 )
                 for r in rows
             ],
