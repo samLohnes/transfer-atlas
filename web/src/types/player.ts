@@ -1,3 +1,5 @@
+import type { GradeBrief, PlayerGradeSummary } from "./grade";
+
 /** A player search result. */
 export interface PlayerSearchResult {
   player_id: number;
@@ -19,6 +21,7 @@ export interface PlayerTransfer {
   transfer_date: string | null;
   transfer_window: string;
   season: string;
+  grade?: GradeBrief | null;
 }
 
 /** A market valuation data point. */
@@ -38,4 +41,5 @@ export interface PlayerDetail {
   transfermarkt_url: string | null;
   transfers: PlayerTransfer[];
   valuations: PlayerValuation[];
+  grade_summary?: PlayerGradeSummary | null;
 }

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import { EmptyState } from "@/components/molecules/EmptyState";
+import { GradeBadgeWithTooltip } from "@/components/molecules/GradeBadgeWithTooltip";
 import { formatFee, formatCount, formatDate } from "@/lib/format";
 import type { TransferRow } from "@/types/transfer";
 
@@ -62,6 +63,7 @@ export function TransferTable({
               <th className="text-right px-3 py-2.5 font-medium text-[10px] uppercase tracking-[0.1em] cursor-pointer hover:text-[#c5dace] transition-colors" onClick={() => onSort("fee")}>
                 Fee<SortIcon field="fee" />
               </th>
+              <th className="text-center px-2 py-2.5 font-medium text-[10px] uppercase tracking-[0.1em] w-[64px]">Grade</th>
               <th className="text-center px-2 py-2.5 font-medium text-[10px] uppercase tracking-[0.1em]">Pos</th>
               <th className="text-left px-3 py-2.5 font-medium text-[10px] uppercase tracking-[0.1em] cursor-pointer hover:text-[#c5dace] transition-colors" onClick={() => onSort("date")}>
                 Date<SortIcon field="date" />
@@ -92,6 +94,19 @@ export function TransferTable({
                 <td className="px-3 py-2 text-right font-data text-[#e8f0ec] tabular-nums">
                   {formatFee(t.fee_eur)}
                   {t.fee_is_loan && <span className="text-[#4a6555] text-[10px] ml-1">(loan)</span>}
+                </td>
+                <td className="px-2 py-2 text-center">
+                  {t.grade ? (
+                    <GradeBadgeWithTooltip
+                      transferId={t.transfer_id}
+                      letterGrade={t.grade.letter_grade}
+                      compositeScore={t.grade.composite_score}
+                      isComplete={t.grade.is_complete}
+                      worthTheFee={t.grade.worth_the_fee}
+                      playerId={t.player_id}
+                      size="sm"
+                    />
+                  ) : null}
                 </td>
                 <td className="px-2 py-2 text-center">
                   {t.position_group && (
