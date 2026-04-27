@@ -29,6 +29,15 @@ def upsert_chunk(
     if not rows:
         return (0, 0)
 
+    # Collapse intra-chunk duplicates on the conflict key — last occurrence wins.
+    # Postgres raises CardinalityViolation if the same conflict target appears
+    # twice in one statement.
+    seen: dict[tuple, dict] = {}
+    for r in rows:
+        key = tuple(r[col] for col in conflict_columns)
+        seen[key] = r
+    rows = list(seen.values())
+
     target = table.__table__ if hasattr(table, "__table__") else table
     stmt = pg_insert(target).values(rows)
     excluded = stmt.excluded
