@@ -100,17 +100,17 @@ validate-png:
 
 # ---- Testing ----
 
-# Run the full pytest suite
+# Run the SQLite unit suite (excludes live-Postgres integration tests — see test-pipeline)
 test:
-    python3 -m pytest tests/ -v
+    .venv/bin/python -m pytest tests/ -v --ignore=tests/test_upsert_integration.py
 
 # Run only the end-to-end pipeline tests
 test-e2e:
-    python3 -m pytest tests/test_ingest.py::TestFullPipelineE2E -v
+    .venv/bin/python -m pytest tests/test_ingest.py::TestFullPipelineE2E -v
 
 # Run tests matching a pattern, e.g. `just test-k "fee"`
 test-k pattern:
-    python3 -m pytest tests/ -v -k "{{pattern}}"
+    .venv/bin/python -m pytest tests/ -v -k "{{pattern}}" --ignore=tests/test_upsert_integration.py
 
 # Run live-Postgres integration tests (requires Docker `db` healthy).
 # Accepts pytest args, e.g.: `just test-pipeline -k test_first_insert`.
