@@ -27,6 +27,8 @@ interface LocalFilters {
   windowStart: string | null;
   windowEnd: string | null;
   completedOnly: boolean;
+  feeMin: number | null;  // EUR cents (or null = no min)
+  feeMax: number | null;  // EUR cents (or null = no max)
 }
 
 const RANKING_LIMIT = 10;
@@ -50,6 +52,8 @@ export function GradesPage() {
     windowStart: null,
     windowEnd: null,
     completedOnly: true,
+    feeMin: null,
+    feeMax: null,
   }));
 
   // Apply the default window once availableWindows arrives — only if the user
@@ -77,6 +81,8 @@ export function GradesPage() {
       countryId: debounced.countryId,
       windowStart: debounced.windowStart,
       windowEnd: debounced.windowEnd,
+      feeMin: debounced.feeMin,
+      feeMax: debounced.feeMax,
     };
     let cancelled = false;
     setRankingsLoading(true);
