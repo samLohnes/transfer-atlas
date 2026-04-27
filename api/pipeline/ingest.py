@@ -23,6 +23,7 @@ from pipeline.parse import (
     normalize_season,
     parse_fee,
 )
+from pipeline.upsert import upsert_chunk
 
 logger = logging.getLogger(__name__)
 
@@ -653,7 +654,11 @@ def ingest_transfers(session: Session, data_dir: Path) -> int:
 
 
 def ingest_valuations(session: Session, data_dir: Path) -> int:
-    """Upsert player valuations from player_valuations.csv. Returns count."""
+    """Upsert player_valuations rows via ON CONFLICT (player_id, valuation_date).
+
+    Returns total rows successfully ingested. valuation_eur is stored in cents
+    (the column name is historical — actual unit is cents, matching Transfer.fee_eur).
+    """
     _validate_schema(data_dir / "player_valuations.csv")
 
     player_tm_map: dict[str, int] = {
@@ -662,26 +667,21 @@ def ingest_valuations(session: Session, data_dir: Path) -> int:
         if p.transfermarkt_id
     }
 
-    # Load existing valuation keys with their current value for in-memory dedup
-    # and change-detection (skip UPDATE when value is unchanged).
-    existing: dict[tuple, tuple[int, int]] = {
-        (r.player_id, r.valuation_date): (r.id, r.valuation_eur)
-        for r in session.query(
-            PlayerValuation.id, PlayerValuation.player_id,
-            PlayerValuation.valuation_date, PlayerValuation.valuation_eur,
-        ).all()
-    }
-    logger.info("Loaded %d existing valuation keys for dedup.", len(existing))
-
-    count = 0
+    inserted_total = 0
+    updated_total = 0
     skipped = 0
-    unchanged = 0
+    chunk_idx = 0
+    total_seen = 0
 
-    for chunk in pd.read_csv(data_dir / "player_valuations.csv", low_memory=False, chunksize=CHUNK_SIZE):
-        new_records: list[dict] = []
-        update_records: list[tuple[int, int]] = []  # (valuation_id, new_val_cents)
+    for chunk in pd.read_csv(
+        data_dir / "player_valuations.csv", low_memory=False, chunksize=CHUNK_SIZE
+    ):
+        chunk_idx += 1
+        rows: list[dict] = []
 
         for row in chunk.itertuples(index=False):
+            total_seen += 1
+
             player_tm_id = _safe_int_str(getattr(row, "player_id", None))
             if not player_tm_id or player_tm_id not in player_tm_map:
                 skipped += 1
@@ -706,47 +706,31 @@ def ingest_valuations(session: Session, data_dir: Path) -> int:
                 skipped += 1
                 continue
 
-            key = (player_id, val_date)
+            rows.append({
+                "player_id": player_id,
+                "valuation_eur": val_cents,
+                "valuation_date": val_date,
+            })
 
-            if key in existing:
-                val_id, old_val_cents = existing[key]
-                if old_val_cents == val_cents:
-                    # Value unchanged — no UPDATE needed
-                    unchanged += 1
-                else:
-                    update_records.append((val_id, val_cents))
-            else:
-                new_records.append({
-                    "player_id": player_id,
-                    "valuation_eur": val_cents,
-                    "valuation_date": val_date,
-                })
-                existing[key] = (-1, val_cents)  # sentinel id, actual value
-
-            count += 1
-
-        # Bulk insert new valuations
-        if new_records:
-            session.execute(insert(PlayerValuation), new_records)
-
-        # Update existing (re-run only)
-        for val_id, val_cents in update_records:
-            session.query(PlayerValuation).filter(
-                PlayerValuation.id == val_id
-            ).update({"valuation_eur": val_cents})
-
-        if new_records or update_records:
+        if rows:
+            ins, upd = upsert_chunk(
+                session, PlayerValuation, rows,
+                conflict_columns=["player_id", "valuation_date"],
+                update_columns=["valuation_eur"],
+            )
+            inserted_total += ins
+            updated_total += upd
             session.flush()
 
-        if count > 0 and count % 50000 < CHUNK_SIZE:
-            logger.info("  ... %d valuations processed", count)
+        if chunk_idx % 5 == 0:
+            logger.info("  ... %d valuation chunks processed", chunk_idx)
 
     session.commit()
     logger.info(
-        "Valuations ingested: %d records. Skipped: %d. Unchanged (no-op): %d.",
-        count, skipped, unchanged,
+        "Valuations ingested: %d inserted, %d updated. Skipped: %d. Seen: %d.",
+        inserted_total, updated_total, skipped, total_seen,
     )
-    return count
+    return inserted_total + updated_total
 
 
 def update_metadata(session: Session, total_records: int, commit_hash: str | None) -> None:
