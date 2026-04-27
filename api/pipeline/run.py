@@ -3,7 +3,6 @@
 import argparse
 import logging
 import sys
-from pathlib import Path
 from app.database import SessionLocal, engine
 from app.models import PipelineMetadata
 from pipeline.aggregate import rebuild_club_summaries, rebuild_country_flows
@@ -18,11 +17,6 @@ from pipeline.ingest import (
 )
 from pipeline.ingest_appearances import ingest_appearances
 from pipeline.quality import log_report, run_quality_checks
-
-# Add the api/ directory to sys.path so imports work when run as a module
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-
 
 logging.basicConfig(
     level=logging.INFO,

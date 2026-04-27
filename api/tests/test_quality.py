@@ -7,6 +7,8 @@ Each check gets a happy-path test (clean data → passes) and a failure test
 import sys
 from datetime import date, timedelta
 from pathlib import Path
+
+import pytest
 from app.models import (
     CountryTransferFlow,
     Player,
@@ -259,3 +261,60 @@ class TestRunQualityChecks:
         assert any(r.name == "no_orphan_transfers" for r in report.errors)
         # Errors list shouldn't include warnings
         assert all(r.severity == "error" for r in report.errors)
+
+
+class TestStrictExitCode:
+    """The --strict flag should make main() exit with code 2 when quality errors exist.
+
+    The full pipeline is mocked out — we only care about the strict-branch wiring
+    in pipeline.run.main().
+    """
+
+    def _patch_pipeline(self, monkeypatch, errors: list[CheckResult]) -> None:
+        """Stub every external step main() calls so it runs entirely in-process."""
+        import pipeline.run as run_mod
+
+        monkeypatch.setattr(run_mod, "_is_data_unchanged", lambda _h: False)
+        monkeypatch.setattr(run_mod, "get_dataset_commit_hash", lambda: "deadbeef")
+        monkeypatch.setattr(run_mod, "fetch_datasets", lambda: "/tmp/fake")
+        monkeypatch.setattr(run_mod, "ingest_competitions", lambda *a, **k: {})
+        monkeypatch.setattr(run_mod, "ingest_players", lambda *a, **k: 0)
+        monkeypatch.setattr(run_mod, "ingest_clubs", lambda *a, **k: 0)
+        monkeypatch.setattr(run_mod, "ingest_appearances", lambda *a, **k: 0)
+        monkeypatch.setattr(run_mod, "ingest_transfers", lambda *a, **k: 0)
+        monkeypatch.setattr(run_mod, "ingest_valuations", lambda *a, **k: 0)
+        monkeypatch.setattr(run_mod, "rebuild_country_flows", lambda *a, **k: None)
+        monkeypatch.setattr(run_mod, "rebuild_club_summaries", lambda *a, **k: None)
+        monkeypatch.setattr(run_mod, "update_metadata", lambda *a, **k: None)
+        monkeypatch.setattr(run_mod, "log_report", lambda *a, **k: None)
+
+        report = QualityReport(results=errors)
+        monkeypatch.setattr(run_mod, "run_quality_checks", lambda _s: report)
+
+    def test_strict_with_errors_exits_2(self, monkeypatch):
+        import pipeline.run as run_mod
+
+        bad = CheckResult(
+            name="no_negative_fees", severity="error", passed=False,
+            message="seeded failure", details={"count": 1},
+        )
+        self._patch_pipeline(monkeypatch, [bad])
+        monkeypatch.setattr(sys, "argv", ["pipeline.run", "--strict"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            run_mod.main()
+        assert exc_info.value.code == 2
+
+    def test_errors_without_strict_completes_normally(self, monkeypatch):
+        """Same failing report, but without --strict main() returns without raising."""
+        import pipeline.run as run_mod
+
+        bad = CheckResult(
+            name="no_negative_fees", severity="error", passed=False,
+            message="seeded failure", details={"count": 1},
+        )
+        self._patch_pipeline(monkeypatch, [bad])
+        monkeypatch.setattr(sys, "argv", ["pipeline.run"])
+
+        # Should return without raising SystemExit
+        run_mod.main()

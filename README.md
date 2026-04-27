@@ -122,6 +122,13 @@ python3 -m pytest tests/test_ingest.py::TestFullPipelineE2E::test_rerun_is_idemp
 
 The aggregation rebuild (`rebuild_country_flows`, `rebuild_club_summaries`) uses PostgreSQL-specific SQL that SQLite can't execute, so it's validated through live pipeline runs rather than unit tests.
 
+### Data quality checks
+
+The pipeline ships with a suite of read-only invariants (orphan rows, fee outliers, distribution sanity, country-flow reconciliation, etc.) defined in `pipeline/quality.py`.
+
+- `just quality` — run the checks against the live database without ingesting; logs the report.
+- `just pipeline-strict` — run the full pipeline and exit non-zero if any error-severity check fails. Use this in CI or scheduled runs.
+
 ## Data
 
 TransferAtlas tracks transfers across 15 leagues in 12 countries:
