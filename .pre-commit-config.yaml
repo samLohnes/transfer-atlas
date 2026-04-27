@@ -1,0 +1,51 @@
+# Pre-commit hooks for TransferAtlas.
+# Install with: pip install pre-commit && pre-commit install
+# Run against all files: pre-commit run --all-files
+
+repos:
+  # ---- General hygiene --------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+      - id: detect-private-key
+
+  # ---- Python: ruff lint + format --------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.10
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # ---- Secret scanning --------------------------------------------------------
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.0
+    hooks:
+      - id: gitleaks
+
+  # ---- Frontend: prettier + tsc ----------------------------------------------
+  # Both are local hooks that shell out to web/'s node_modules.
+  # Requires `cd web && npm install` to have been run at least once.
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier (web)
+        entry: web/node_modules/.bin/prettier --write --ignore-unknown
+        language: system
+        files: ^web/.*\.(ts|tsx|js|jsx|json|css|md)$
+        pass_filenames: true
+
+      - id: tsc
+        name: tsc typecheck (web)
+        entry: bash -c 'cd web && ./node_modules/.bin/tsc -b'
+        language: system
+        files: ^web/.*\.(ts|tsx)$
+        pass_filenames: false
