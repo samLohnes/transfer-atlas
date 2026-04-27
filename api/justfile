@@ -63,7 +63,7 @@ quality:
 # ---- Lint / syntax ----
 
 # Compile-check every .py in the project (no execution). Stdlib-only, no venv needed.
-lint:
+compile-check:
     python3 -m compileall -q app pipeline ml
 
 # ---- Grading pipeline ----
@@ -117,3 +117,17 @@ test-k pattern:
 # Run the API locally with hot-reload (bypasses Docker)
 serve:
     DATABASE_URL={{db_url}} uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# ---- Code quality ----
+
+# Lint Python code with ruff (auto-fix safe issues)
+lint:
+    cd .. && ruff check --fix api
+
+# Format Python code with ruff
+format:
+    cd .. && ruff format api
+
+# Type-check the frontend (run from web/ via npm)
+typecheck:
+    cd ../web && ./node_modules/.bin/tsc -b

@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "format": "prettier --write \"src/**/*.{ts,tsx,json,css,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,json,css,md}\""
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",
@@ -35,6 +37,7 @@
     "@vitejs/plugin-react": "^4.4.1",
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.3",
+    "prettier": "^3.3.0",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",
     "vite": "^6.3.2"

@@ -1,0 +1,30 @@
+# Repo-root pyproject.toml — currently exists only to configure ruff.
+# All Python source lives in api/.
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["api"]
+extend-exclude = [
+    "alembic/versions",
+    ".venv",
+    "web",
+    "data",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",  # line-too-long (ruff format handles wrapping)
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

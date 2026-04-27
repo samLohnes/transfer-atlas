@@ -129,6 +129,46 @@ The pipeline ships with a suite of read-only invariants (orphan rows, fee outlie
 - `just quality` — run the checks against the live database without ingesting; logs the report.
 - `just pipeline-strict` — run the full pipeline and exit non-zero if any error-severity check fails. Use this in CI or scheduled runs.
 
+## Code quality
+
+Pre-commit hooks enforce formatting, linting, type-checking, and secret scanning. They run automatically on `git commit`.
+
+### One-time setup
+
+```bash
+# Install the pre-commit framework
+pip install pre-commit
+
+# Wire up the hooks for this repo
+pre-commit install
+
+# Install frontend dev deps (needed for prettier + tsc hooks)
+cd web && npm install && cd ..
+```
+
+### Tooling
+
+- **[ruff](https://docs.astral.sh/ruff/)** — Python lint + format (config in `pyproject.toml`)
+- **[prettier](https://prettier.io)** — frontend formatting (config in `web/.prettierrc.json`)
+- **[tsc](https://www.typescriptlang.org)** — frontend type-check (no emit, project mode)
+- **[gitleaks](https://github.com/gitleaks/gitleaks)** — scans staged content for committed secrets
+
+### Manual invocation
+
+```bash
+# Run all hooks against all files (e.g. before opening a PR)
+pre-commit run --all-files
+
+# Just the Python tooling
+cd api && just lint && just format
+
+# Just the frontend
+cd web && npm run format && npm run format:check
+cd api && just typecheck
+```
+
+The first run of `pre-commit run --all-files` will likely fix many existing style issues — review the diff before committing.
+
 ## Data
 
 TransferAtlas tracks transfers across 15 leagues in 12 countries:
