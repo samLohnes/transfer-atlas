@@ -112,6 +112,11 @@ test-e2e:
 test-k pattern:
     python3 -m pytest tests/ -v -k "{{pattern}}"
 
+# Run live-Postgres integration tests (requires Docker `db` healthy).
+# Accepts pytest args, e.g.: `just test-pipeline -k test_first_insert`.
+test-pipeline *args:
+    DATABASE_URL={{db_url}} .venv/bin/python -m pytest tests/test_upsert_integration.py -v {{args}}
+
 # ---- Dev server ----
 
 # Run the API locally with hot-reload (bypasses Docker)
