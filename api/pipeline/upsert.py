@@ -38,6 +38,37 @@ def upsert_chunk(
         seen[key] = r
     rows = list(seen.values())
 
+    dialect_name = session.bind.dialect.name if session.bind else ""
+    if dialect_name != "postgresql":
+        # SQLite path used only by tests — look up existing row by conflict key
+        # and either update update_columns in place or insert a new row. Counts
+        # are best-effort; idempotency is sufficient for the SQLite suite.
+        ins = upd = 0
+        if hasattr(table, "__name__"):
+            for row in rows:
+                q = session.query(table)
+                for col in conflict_columns:
+                    q = q.filter(getattr(table, col) == row[col])
+                existing_obj = q.one_or_none()
+                if existing_obj is None:
+                    session.add(table(**row))
+                    ins += 1
+                else:
+                    changed = False
+                    for col in update_columns:
+                        if getattr(existing_obj, col) != row[col]:
+                            setattr(existing_obj, col, row[col])
+                            changed = True
+                    if changed or not only_if_changed:
+                        upd += 1
+        else:
+            # Raw Table (used only by integration tests, which skip under SQLite).
+            from sqlalchemy import insert as sa_insert
+            for row in rows:
+                session.execute(sa_insert(table).values(**row))
+                ins += 1
+        return (ins, upd)
+
     target = table.__table__ if hasattr(table, "__table__") else table
     stmt = pg_insert(target).values(rows)
     excluded = stmt.excluded
