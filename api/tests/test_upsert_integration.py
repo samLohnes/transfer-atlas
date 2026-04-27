@@ -140,3 +140,80 @@ def test_intra_chunk_duplicate_keys_collapse_cleanly(pg_session):
     row = session.execute(select(tbl).where(tbl.c.nat_a == 1)).one()
     # Last-wins semantics: payload_int should be 20
     assert row.payload_int == 20
+
+
+def test_appearance_club_id_change_alone_writes_through():
+    """Regression: TODO.md flagged that change detection skipped club_id changes.
+
+    Verifies via the live ingest path: write an appearance, then re-run the same
+    chunk with only club_id changed, and confirm the row was updated.
+    """
+    import os, csv, tempfile
+    from pathlib import Path
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    if not os.environ.get("DATABASE_URL", "").startswith("postgresql"):
+        pytest.skip("requires Postgres")
+
+    # This test runs against the live dev DB and assumes `just pipeline` has been
+    # run at least once so player + club rows exist. We pick the first appearance
+    # row in the DB, mutate just its club_id, and re-ingest a fixture CSV.
+    # Implemented inline to avoid a heavyweight fixture; intentionally minimal.
+    from app.models import Appearance, Player, Club
+    engine = create_engine(os.environ["DATABASE_URL"])
+    with Session(engine) as s:
+        existing = s.query(Appearance).first()
+        assert existing is not None, "run `just pipeline` first"
+        player = s.get(Player, existing.player_id)
+        # Find a different club to swap to
+        other_club = s.query(Club).filter(Club.id != existing.club_id).first()
+        assert other_club is not None
+        original_club_id = existing.club_id
+        target_club_id = other_club.id
+        original_tm_player = player.transfermarkt_id
+        original_tm_club = (s.query(Club).get(original_club_id)).transfermarkt_id
+        target_tm_club = other_club.transfermarkt_id
+        original_game_id = existing.game_id
+        original_date = existing.date
+
+    # Build a single-row CSV with a different player_club_id but identical stats.
+    with tempfile.TemporaryDirectory() as td:
+        td_path = Path(td)
+        with open(td_path / "appearances.csv", "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=[
+                "appearance_id", "player_id", "game_id", "player_club_id",
+                "competition_id", "date", "minutes_played", "goals", "assists",
+                "yellow_cards", "red_cards",
+            ])
+            w.writeheader()
+            w.writerow({
+                "appearance_id": "ignored",
+                "player_id": original_tm_player,
+                "game_id": original_game_id,
+                "player_club_id": target_tm_club,
+                "competition_id": "GB1",
+                "date": original_date.isoformat(),
+                "minutes_played": existing.minutes_played,
+                "goals": existing.goals, "assists": existing.assists,
+                "yellow_cards": existing.yellow_cards, "red_cards": existing.red_cards,
+            })
+
+        from pipeline.ingest_appearances import ingest_appearances
+        with Session(engine) as s:
+            ingest_appearances(s, td_path)
+            s.commit()
+
+        with Session(engine) as s:
+            row = s.query(Appearance).filter_by(
+                player_id=existing.player_id, game_id=original_game_id,
+            ).one()
+            assert row.club_id == target_club_id, "club_id change must persist"
+
+        # Restore original to keep DB clean for re-runs
+        with Session(engine) as s:
+            row = s.query(Appearance).filter_by(
+                player_id=existing.player_id, game_id=original_game_id,
+            ).one()
+            row.club_id = original_club_id
+            s.commit()
