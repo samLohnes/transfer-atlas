@@ -27,17 +27,20 @@ class CuratedTransfer:
     year: int
 
 
+# Player + club names use SUBSTRINGS that match Transfermarkt's actual stored values
+# (e.g., "Liverpool Football Club" not "Liverpool FC"; "Rodri" not "Rodri Hernández";
+#  "Julián Alvarez" not "Julián Álvarez"). Year + name + club together disambiguate.
 CURATED: list[CuratedTransfer] = [
-    CuratedTransfer("Rodri → Man City 2019",         "Rodri Hernández",       "Manchester City", 2019),
-    CuratedTransfer("Kanté → Chelsea 2016",          "N'Golo Kanté",          "Chelsea FC",      2016),
-    CuratedTransfer("De Bruyne → Man City 2015",     "Kevin De Bruyne",       "Manchester City", 2015),
-    CuratedTransfer("Bellingham → Real Madrid 2023", "Jude Bellingham",       "Real Madrid",     2023),
-    CuratedTransfer("Van Dijk → Liverpool 2018",     "Virgil van Dijk",       "Liverpool FC",    2018),
-    CuratedTransfer("Cancelo → Man City 2019",       "João Cancelo",          "Manchester City", 2019),
-    CuratedTransfer("Alisson → Liverpool 2018",      "Alisson Becker",        "Liverpool FC",    2018),
-    CuratedTransfer("Haaland → Man City 2022",       "Erling Haaland",        "Manchester City", 2022),
-    CuratedTransfer("Salah → Liverpool 2017",        "Mohamed Salah",         "Liverpool FC",    2017),
-    CuratedTransfer("Álvarez → Man City 2022",       "Julián Álvarez",        "Manchester City", 2022),
+    CuratedTransfer("Rodri → Man City 2019",         "Rodri",          "Manchester City",         2019),
+    CuratedTransfer("Kanté → Chelsea 2016",          "Kanté",          "Chelsea Football Club",   2016),
+    CuratedTransfer("De Bruyne → Man City 2015",     "De Bruyne",      "Manchester City",         2015),
+    CuratedTransfer("Bellingham → Real Madrid 2023", "Bellingham",     "Real Madrid",             2023),
+    CuratedTransfer("Van Dijk → Liverpool 2018",     "Van Dijk",       "Liverpool Football Club", 2018),
+    CuratedTransfer("Cancelo → Man City 2019",       "Cancelo",        "Manchester City",         2019),
+    CuratedTransfer("Alisson → Liverpool 2018",      "Alisson",        "Liverpool Football Club", 2018),
+    CuratedTransfer("Haaland → Man City 2022",       "Haaland",        "Manchester City",         2022),
+    CuratedTransfer("Salah → Liverpool 2017",        "Salah",          "Liverpool Football Club", 2017),
+    CuratedTransfer("Álvarez → Man City 2022",       "Alvarez",        "Manchester City",         2022),
 ]
 
 
