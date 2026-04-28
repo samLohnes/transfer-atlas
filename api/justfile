@@ -98,6 +98,10 @@ validate:
 validate-png:
     DATABASE_URL={{db_url}} .venv/bin/python -m ml.validate --histogram models/grade_distribution.png
 
+# Print grades for the 10 release-gate curated transfers; exit non-zero if gate fails.
+curated:
+    DATABASE_URL={{db_url}} .venv/bin/python -m ml.curated
+
 # ---- Testing ----
 
 # Run the SQLite unit suite (excludes live-Postgres integration tests — see test-pipeline)
