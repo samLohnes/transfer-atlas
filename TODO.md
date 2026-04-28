@@ -6,18 +6,15 @@ These were either spawned as chips in that session (some chips may have been dis
 
 ### Modeling / data quality
 
-- [ ] **Tune the transfer-grading model so Rodri-tier signings don't grade poorly.** Validation showed mean composite 48.4 (target 50–65) with `financial_return` averaging 28.7 — the sigmoid is amplifying real-world below-expected exit ratios into very low component scores. First pass: tune `sigmoid_scales.financial_return` (currently 2.0 — try 1.0 or 0.5), then audit `_populate_expected_exit_ratios` peer matching, then consider sub-position-aware production buckets (DM/CM/AM split inside MID). Validate against a curated list (Rodri, Haaland, Bellingham, Saka, etc. — should all grade B+). See `GRADING_NOTES.md` for the full diagnostic.
-
 - [ ] **Add tests for appearance ingest + new player fields.** Task 1 added a 180-line `pipeline/ingest_appearances.py` and seven new `Player` columns without unit-test coverage. Cover: upsert idempotency, missing-player/club skip paths, NaN-stats coercion, `_normalize_foot` edge cases, `_market_value_to_cents` overflow, `_parse_date` ISO vs US formats, intra-CSV duplicate handling.
-
-- [ ] **Switch appearances upsert to `INSERT … ON CONFLICT DO UPDATE`.** Pre-loading every existing row into a Python dedup dict will cost ~250–300 MB at full scale (1.8M rows). Replace with Postgres `ON CONFLICT (player_id, game_id)`. This single change also fixes:
-  - The silent data-loss bug on intra-CSV duplicates (sentinel `aid=-1` UPDATE matches zero rows).
-  - The partial change-detection bug (current tuple compares only stats, missing `club_id`/`competition_id`/`date`).
-  Same shape exists in `ingest_transfers` and `ingest_valuations` at smaller scale — apply the refactor consistently. See `api/pipeline/ingest_appearances.py` lines 55-64 and 119-153.
 
 - [ ] **Make appearances `competition_id` schema-optional.** Currently in `REQUIRED_COLUMNS` (`api/pipeline/ingest.py` lines 127-131); a Transfermarkt rename would abort the whole pipeline even though the column is nullable in our schema and only consumed by Task 3's minutes-pct denominator (which already filters NULL competitions). Move to KNOWN-only.
 
+- [ ] **Phase 3: FM attribute ingestion + ML model for the cases the heuristic floor can't reach.** The v0.1.0 release ships with a `tenure_success_floor` heuristic that lifts long-tenure high-minutes stints (Alisson F → B, Rodri C+ → B+, De Bruyne C+ → B+, etc.). It's a stopgap. The remaining curated misses (Alisson 77.5, Álvarez 77.2 — both ~0.5–0.8 below B+) and the structural gap with Kanté (G+A is a poor proxy for DM contribution) need attribute-level data. Phase 3 adds: (a) Football Manager attribute ingestion for tackles/interceptions/positioning/leadership, (b) a gradient-boosted tree trained on those + the existing component scores, swapped in via the `phase3_ml_model_path` hook in `scoring_config.json`. See `GRADING_NOTES.md` final iteration log for the full breakdown.
+
 - [ ] **Promote shared CSV ingest helpers to a public module.** `pipeline/ingest_appearances.py` imports six leading-underscore names (`_validate_schema`, `_safe_str`, `_safe_int_str`, `_coerce_int_default`, `_parse_date`) from `pipeline.ingest` — violates Python convention. Either drop the underscores or move to `pipeline/csv_utils.py`.
+
+- [ ] **Verify the upsert helper's SQLite fallback covers all call sites.** `pipeline/upsert.py` has a Postgres-only fast path and a SQLite query-then-upsert fallback for tests. The fallback is exercised by `TestIngestValuations`, `TestIngestTransfers`, and the E2E pipeline tests under SQLite, but not formally documented as a "test-only path." If a future call site needs production-grade upsert semantics under SQLite, the fallback contract may need extending.
 
 ### Validation / completeness
 
