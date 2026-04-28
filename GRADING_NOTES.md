@@ -311,3 +311,49 @@ Notable failures to track:
 - **Alisson F 39.9** — premium GK signing. GK keeps `position_group` (no sub-position split per design).
   Likely value_trajectory or financial_return is the killer; sigmoid tuning should help.
 - **Álvarez "ungraded"** — loan-classification quirk noted in original GRADING_NOTES. Out of scope.
+
+### Per-transfer expected_floor (gate v2)
+
+User pushback during T12 review: Bellingham (in-progress) and Cancelo (sold ~38% of entry fee)
+genuinely SHOULD grade lower than B+. Rather than tuning the model to artificially lift them,
+the gate now uses per-transfer `expected_floor`:
+
+- Bellingham 2023: floor C (55) — in-progress, financial_return null
+- Cancelo 2019:  floor D (40) — sold for ~€25M of €65M entry fee
+- All other 8: floor B+ (78)
+
+Gate passes when **every** transfer clears its own floor.
+
+Also fixed: Álvarez 2022 lookup was returning the €0 follow-up row (ungraded) instead of
+the €21.4M Winter 2022 paid signing (graded 80.39). Lookup now orders by composite_score
+DESC NULLS LAST so the graded match wins.
+
+```
+PLAYER                           FLOOR GRADE   COMPOSITE  STATUS
+----------------------------------------------------------------------------
+Rodri → Man City 2019            B+    C+           67.6  FAIL
+Kanté → Chelsea 2016             B+    D            51.6  FAIL
+De Bruyne → Man City 2015        B+    C+           66.6  FAIL
+Bellingham → Real Madrid 2023    C     C+           62.6  PASS
+Van Dijk → Liverpool 2018        B+    B+           80.2  PASS
+Cancelo → Man City 2019          D     D            42.1  PASS
+Alisson → Liverpool 2018         B+    F            39.9  FAIL
+Haaland → Man City 2022          B+    A            89.9  PASS
+Salah → Liverpool 2017           B+    A            94.2  PASS
+Álvarez → Man City 2022          B+    B+           80.4  PASS
+----------------------------------------------------------------------------
+Curated gate: 6/10 clear their per-transfer floor   ✗ FAILING
+```
+
+True post-T11 baseline: **6/10 passing**. Four to lift via tuning:
+
+| Transfer | Position | Composite | Floor | Gap |
+|---|---|---:|---:|---:|
+| Rodri → Man City 2019 | MID (DM) | 67.6 | 78 | 10.4 |
+| Kanté → Chelsea 2016 | MID (DM) | 51.6 | 78 | 26.4 |
+| De Bruyne → Man City 2015 | MID (CM/AM) | 66.6 | 78 | 11.4 |
+| Alisson → Liverpool 2018 | GK | 39.9 | 78 | 38.1 |
+
+Three midfielders + one GK. The DM split helped Rodri less than expected; Kanté is the
+biggest miss. Alisson (F) needs structural attention — GK doesn't get sub-position split,
+so the F is likely driven by financial_return / value_trajectory sigmoid.
