@@ -357,3 +357,84 @@ True post-T11 baseline: **6/10 passing**. Four to lift via tuning:
 Three midfielders + one GK. The DM split helped Rodri less than expected; Kanté is the
 biggest miss. Alisson (F) needs structural attention — GK doesn't get sub-position split,
 so the F is likely driven by financial_return / value_trajectory sigmoid.
+
+---
+
+## Iteration 1: financial_return sigmoid 2.0 → 1.0
+
+**Config diff:** `sigmoid_scales.financial_return`: 2.0 → 1.0
+
+### Validate output
+
+```
+Active version: v1.0.20260428.004633  (11475 grades, scored 2026-04-28 00:46 UTC)
+
+Mean:    49.33
+Median:  49.53
+Stddev:  24.75
+Complete vs in-progress: 5873 / 5602
+
+Letter distribution:
+grade  n     pct     bar
+-----  ----  ------  ------------------
+A      1065    9.3%  ████
+B+     605     5.3%  ██
+B      886     7.7%  ███
+C+     1025    8.9%  ████
+C      987     8.6%  ████
+D      2559   22.3%  ███████████
+F      4348   37.9%  ██████████████████
+
+Per-position composite stats:
+pg   n     mean   median  stddev
+---  ----  -----  ------  ------
+GK   769   45.20  42.25   27.21
+DEF  3512  49.80  50.00   24.22
+MID  3345  49.83  50.00   24.47
+FWD  3849  49.28  48.60   24.89
+
+Component scores:
+component         n      coverage  nulls  mean   stddev
+----------------  -----  --------  -----  -----  ------
+minutes           7968    69.4%    3507   50.00  28.87
+production        7446    64.9%    4029   50.00  28.76
+value_trajectory  11465   99.9%    10     56.00  35.86
+financial_return  5871    51.2%    5604   34.26  29.10
+
+WARNINGS:
+  - Mean composite (49.3) outside healthy range (50.0, 65.0). Calibrated rates or sigmoid scales may need adjustment.
+```
+
+### Curated lookup
+
+```
+PLAYER                           FLOOR GRADE   COMPOSITE  STATUS
+----------------------------------------------------------------------------
+Rodri → Man City 2019            B+    C+           67.6  FAIL
+Kanté → Chelsea 2016             B+    D            54.2  FAIL
+De Bruyne → Man City 2015        B+    C+           67.6  FAIL
+Bellingham → Real Madrid 2023    C     C+           62.6  PASS
+Van Dijk → Liverpool 2018        B+    B+           80.2  PASS
+Cancelo → Man City 2019          D     D            44.5  PASS
+Alisson → Liverpool 2018         B+    F            39.9  FAIL
+Haaland → Man City 2022          B+    A            89.9  PASS
+Salah → Liverpool 2017           B+    A            94.2  PASS
+Álvarez → Man City 2022          B+    B            77.2  FAIL
+----------------------------------------------------------------------------
+Curated gate: 5/10 clear their per-transfer floor   ✗ FAILING
+
+Non-B+ floors:
+  - Bellingham → Real Madrid 2023: floor C (55) — in-progress, financial_return null
+  - Cancelo → Man City 2019: floor D (40) — sold ~38% of entry fee, age-adjusted poor
+
+Misses:
+  - Rodri → Man City 2019 (C+ 67.6, floor B+ 78)
+  - Kanté → Chelsea 2016 (D 54.2, floor B+ 78)
+  - De Bruyne → Man City 2015 (C+ 67.6, floor B+ 78)
+  - Alisson → Liverpool 2018 (F 39.9, floor B+ 78)
+  - Álvarez → Man City 2022 (B 77.2, floor B+ 78)
+```
+
+### Verdict
+
+Distribution gates fail (mean 49.33 still under [50, 65]); curated 6/10 → 5/10 (Álvarez regressed PASS→FAIL). Continue to T14 (further config tune).
