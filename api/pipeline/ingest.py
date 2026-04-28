@@ -382,6 +382,7 @@ def ingest_players(session: Session, data_dir: Path) -> int:
                 "name": name,
                 "date_of_birth": dob,
                 "position": sub_position,
+                "sub_position": sub_position or None,
                 "position_group": position_group,
                 "nationality": nationality,
                 "transfermarkt_url": url,
