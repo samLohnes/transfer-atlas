@@ -36,6 +36,7 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models import Appearance, Player, PlayerValuation, Transfer, TransferFeature
+from ml.utils import position_subgroup
 
 logger = logging.getLogger(__name__)
 
@@ -335,6 +336,7 @@ def _compute_one(
         "assists_per_90": a_per_90,
         "goal_contributions_per_90": ga_per_90,
         "position_group": player.position_group,
+        "position_subgroup": position_subgroup(player.sub_position, player.position_group),
         "fee_percentile": fee_percentiles.get(stint.transfer_id),
         "entry_fee_eur": stint.entry_fee_eur,
         "exit_fee_eur": stint.exit_fee_eur,

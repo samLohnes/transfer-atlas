@@ -32,6 +32,7 @@ class TransferFeature(Base):
         Numeric(6, 3), nullable=True
     )
     position_group: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    position_subgroup: Mapped[str | None] = mapped_column(String(3), nullable=True, index=True)
     fee_percentile: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     entry_fee_eur: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     exit_fee_eur: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
