@@ -276,3 +276,38 @@ Misses:
 
 Notes: this is the curated-list snapshot before any config tuning. Whatever
 this shows is the "structural fix only" baseline; T13+ will tune from here.
+
+### Curated lookup fix — corrected baseline
+
+The 6 "NOT FOUND" rows above were lookup-script bugs, not missing data. Transfermarkt
+stores `Liverpool Football Club` (not `Liverpool FC`), `Rodri` (single-name), `Alisson`,
+and `Julián Alvarez` (no accent on the 'á' in Álvarez). After fixing the substrings:
+
+```
+PLAYER                           GRADE   COMPOSITE  STATUS
+----------------------------------------------------------------------
+Rodri → Man City 2019            C+           67.6  FAIL
+Kanté → Chelsea 2016             D            51.6  FAIL
+De Bruyne → Man City 2015        C+           66.6  FAIL
+Bellingham → Real Madrid 2023    C+           62.6  FAIL
+Van Dijk → Liverpool 2018        B+           80.2  PASS
+Cancelo → Man City 2019          D            42.1  FAIL
+Alisson → Liverpool 2018         F            39.9  FAIL
+Haaland → Man City 2022          A            89.9  PASS
+Salah → Liverpool 2017           A            94.2  PASS
+Álvarez → Man City 2022          ?               —  TRANSFER UNGRADED (loan/free?)
+----------------------------------------------------------------------
+Curated gate: 3/10 >= B+   ✗ FAILING
+```
+
+True baseline: 3/10 passing (Van Dijk B+, Haaland A, Salah A). Need to reach 8/10.
+
+Notable failures to track:
+- **Rodri C+ 67.6** — the named test case from GRADING_NOTES headline. Sub-position (DM)
+  bucketing nudged him slightly but he's still ~10 points short of B+. Expected to be the
+  primary beneficiary of T13's sigmoid tuning.
+- **Kanté D 51.6** — another DM. Confirms the DM gap isn't just one transfer.
+- **Cancelo D 42.1** — FB sub-position. Short stint may be hurting him; may need T15's peer-matching audit.
+- **Alisson F 39.9** — premium GK signing. GK keeps `position_group` (no sub-position split per design).
+  Likely value_trajectory or financial_return is the killer; sigmoid tuning should help.
+- **Álvarez "ungraded"** — loan-classification quirk noted in original GRADING_NOTES. Out of scope.
