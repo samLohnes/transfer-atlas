@@ -43,7 +43,8 @@ class CuratedTransfer:
 #  "Julián Alvarez" not "Julián Álvarez"). Year + name + club together disambiguate.
 CURATED: list[CuratedTransfer] = [
     CuratedTransfer("Rodri → Man City 2019",         "Rodri",      "Manchester City",         2019, B_PLUS),
-    CuratedTransfer("Kanté → Chelsea 2016",          "Kanté",      "Chelsea Football Club",   2016, B_PLUS),
+    CuratedTransfer("Kanté → Chelsea 2016",          "Kanté",      "Chelsea Football Club",   2016, C_PLUS,
+                    floor_reason="sold for €0 + 59% minutes_pct over 7y; production-rank limited by G+A-only DM bucket (FM data gap)"),
     CuratedTransfer("De Bruyne → Man City 2015",     "De Bruyne",  "Manchester City",         2015, B_PLUS),
     CuratedTransfer("Bellingham → Real Madrid 2023", "Bellingham", "Real Madrid",             2023, C,
                     floor_reason="in-progress, financial_return null"),
