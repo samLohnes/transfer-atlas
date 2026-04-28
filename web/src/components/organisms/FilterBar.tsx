@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { useFilters } from "@/hooks/useFilters";
 import { formatFee } from "@/lib/format";
+import { FEE_STEPS_EUR } from "@/lib/feeSteps";
 import { DualRangeSlider } from "@/components/atoms/DualRangeSlider";
 import type { PositionGroup } from "@/types/filter";
 
@@ -14,12 +15,6 @@ const POSITION_GROUPS: { key: PositionGroup; label: string; active: string; inac
 
 const TRANSFER_TYPES = ["all", "paid", "free"] as const;
 
-/** Fee breakpoints in EUR — meaningful values for football transfers. */
-const FEE_STEPS_EUR = [
-  0, 500_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000,
-  15_000_000, 20_000_000, 30_000_000, 50_000_000, 75_000_000,
-  100_000_000, 150_000_000, 200_000_000, 250_000_000,
-];
 const FEE_MAX_INDEX = FEE_STEPS_EUR.length; // Index beyond last = "no max"
 
 function feeIndexToEur(index: number): number | null {

@@ -6,6 +6,8 @@ import { EmptyState } from "@/components/molecules/EmptyState";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useFilters } from "@/hooks/useFilters";
 import { fetchClubComparison, fetchTopGrades } from "@/lib/api";
+import { FEE_STEPS_EUR } from "@/lib/feeSteps";
+import { formatFee } from "@/lib/format";
 import type {
   ClubReportCard,
   RankedTransfer,
@@ -27,7 +29,27 @@ interface LocalFilters {
   windowStart: string | null;
   windowEnd: string | null;
   completedOnly: boolean;
+  feeMin: number | null;  // EUR cents (or null = no min)
+  feeMax: number | null;  // EUR cents (or null = no max)
 }
+
+// Options share the FEE_STEPS_EUR list (in EUR) but emit cents in the value
+// because TopGradesParams is in EUR cents (matches Transfer.fee_eur storage).
+const FEE_OPTIONS_FOR_MIN = [
+  { value: "", label: "Any" },
+  ...FEE_STEPS_EUR.map((eur) => ({
+    value: String(eur * 100),
+    label: formatFee(eur * 100),
+  })),
+];
+
+const FEE_OPTIONS_FOR_MAX = [
+  ...FEE_STEPS_EUR.map((eur) => ({
+    value: String(eur * 100),
+    label: formatFee(eur * 100),
+  })),
+  { value: "", label: "No max" },
+];
 
 const RANKING_LIMIT = 10;
 
@@ -50,6 +72,8 @@ export function GradesPage() {
     windowStart: null,
     windowEnd: null,
     completedOnly: true,
+    feeMin: null,
+    feeMax: null,
   }));
 
   // Apply the default window once availableWindows arrives — only if the user
@@ -77,6 +101,8 @@ export function GradesPage() {
       countryId: debounced.countryId,
       windowStart: debounced.windowStart,
       windowEnd: debounced.windowEnd,
+      feeMin: debounced.feeMin,
+      feeMax: debounced.feeMax,
     };
     let cancelled = false;
     setRankingsLoading(true);
@@ -174,6 +200,36 @@ export function GradesPage() {
               { value: "", label: "All countries" },
               ...availableCountries.map((c) => ({ value: String(c.id), label: c.name })),
             ]}
+          />
+          <FilterDropdown
+            label="Fee min"
+            value={filters.feeMin === null ? "" : String(filters.feeMin)}
+            onChange={(v) =>
+              setFilters((p) => {
+                const next = v ? parseInt(v, 10) : null;
+                // If user just raised Min above existing Max, clear Max (per spec).
+                if (next !== null && p.feeMax !== null && next > p.feeMax) {
+                  return { ...p, feeMin: next, feeMax: null };
+                }
+                return { ...p, feeMin: next };
+              })
+            }
+            options={FEE_OPTIONS_FOR_MIN}
+          />
+          <FilterDropdown
+            label="Fee max"
+            value={filters.feeMax === null ? "" : String(filters.feeMax)}
+            onChange={(v) =>
+              setFilters((p) => {
+                const next = v ? parseInt(v, 10) : null;
+                // If user just lowered Max below existing Min, clear Min (per spec).
+                if (next !== null && p.feeMin !== null && next < p.feeMin) {
+                  return { ...p, feeMin: null, feeMax: next };
+                }
+                return { ...p, feeMax: next };
+              })
+            }
+            options={FEE_OPTIONS_FOR_MAX}
           />
           <FilterDropdown
             label="From"

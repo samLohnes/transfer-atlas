@@ -77,6 +77,17 @@ class TestIngestPlayers:
         count = ingest_players(db_session, data_dir)
         assert count == 4
 
+    def test_populates_sub_position(self, db_session, data_dir):
+        """sub_position from players.csv must round-trip into Player.sub_position."""
+        from pipeline.ingest import ingest_players
+        ingest_players(db_session, data_dir)
+        p = db_session.query(Player).filter_by(transfermarkt_id="100").one()
+        assert p.sub_position == "Centre-Forward"
+        p2 = db_session.query(Player).filter_by(transfermarkt_id="200").one()
+        assert p2.sub_position == "Central Midfield"
+        p4 = db_session.query(Player).filter_by(transfermarkt_id="400").one()
+        assert p4.sub_position is None  # row had empty sub_position
+
 
 class TestIngestCompetitions:
     """Verify competition ingestion and league matching."""

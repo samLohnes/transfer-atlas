@@ -69,6 +69,7 @@ def grade_all(session: Session, dry_run: bool = False, recalibrate: bool = False
     config = _load_config()
     weights = config["component_weights"]
     sigmoid_scales = config["sigmoid_scales"]
+    floor_config = config.get("tenure_success_floor", {})
     min_group = int(config.get("min_comparison_group_size", 20))
 
     # Step 2 — create the version row up front so its id is the FK target for
@@ -108,6 +109,7 @@ def grade_all(session: Session, dry_run: bool = False, recalibrate: bool = False
             calibrated_rates=calibrated_rates,
             weights=weights,
             sigmoid_scales=sigmoid_scales,
+            floor_config=floor_config,
             min_group=min_group,
             scoring_version_id=scoring_version_id,
         )
@@ -200,6 +202,7 @@ def _score_one(
     calibrated_rates,
     weights,
     sigmoid_scales,
+    floor_config,
     min_group: int,
     scoring_version_id: int,
 ) -> dict | None:
@@ -214,9 +217,11 @@ def _score_one(
     )
     value_trajectory, expected_value_pct = score_value_trajectory(
         feature_row, calibrated_rates, sigmoid_scales["value_trajectory"],
+        floor_config=floor_config,
     )
     financial_return = score_financial_return(
         feature_row, sigmoid_scales["financial_return"],
+        floor_config=floor_config,
     )
 
     composite = compose_scores(

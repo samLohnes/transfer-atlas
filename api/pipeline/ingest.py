@@ -23,6 +23,7 @@ from pipeline.parse import (
     normalize_season,
     parse_fee,
 )
+from pipeline.upsert import upsert_chunk
 
 logger = logging.getLogger(__name__)
 
@@ -381,6 +382,7 @@ def ingest_players(session: Session, data_dir: Path) -> int:
                 "name": name,
                 "date_of_birth": dob,
                 "position": sub_position,
+                "sub_position": sub_position or None,
                 "position_group": position_group,
                 "nationality": nationality,
                 "transfermarkt_url": url,
@@ -516,10 +518,13 @@ def ingest_clubs(
 
 
 def ingest_transfers(session: Session, data_dir: Path) -> int:
-    """Upsert all transfers from transfers.csv. Returns count of records processed."""
+    """Upsert transfers via ON CONFLICT on (player_id, transfer_date, from_club_id, to_club_id).
+
+    Matches the existing uq_transfers_natural_key unique index. Returns total
+    rows processed (inserts + updates).
+    """
     _validate_schema(data_dir / "transfers.csv")
 
-    # Build lookup maps
     player_tm_map: dict[str, int] = {
         str(p.transfermarkt_id): p.id
         for p in session.query(Player.transfermarkt_id, Player.id).all()
@@ -531,37 +536,26 @@ def ingest_transfers(session: Session, data_dir: Path) -> int:
         if c.transfermarkt_id
     }
 
-    # Load existing transfer keys with their current mutable fields for dedup
-    # and change-detection (skip UPDATE when nothing actually changed).
-    existing: dict[tuple, tuple[int, int | None, bool, str, str]] = {
-        (r.player_id, r.transfer_date, r.from_club_id, r.to_club_id):
-            (r.id, r.fee_eur, r.fee_is_loan, r.transfer_window, r.season)
-        for r in session.query(
-            Transfer.id, Transfer.player_id, Transfer.transfer_date,
-            Transfer.from_club_id, Transfer.to_club_id,
-            Transfer.fee_eur, Transfer.fee_is_loan,
-            Transfer.transfer_window, Transfer.season,
-        ).all()
-    }
-    logger.info("Loaded %d existing transfer keys for dedup.", len(existing))
-
-    count = 0
+    inserted_total = 0
+    updated_total = 0
     skipped = 0
     excluded_loans = 0
-    unchanged = 0
+    chunk_idx = 0
+    total_seen = 0
 
     for chunk in pd.read_csv(data_dir / "transfers.csv", low_memory=False, chunksize=CHUNK_SIZE):
-        if count == 0 and skipped == 0:
-            logger.info("Processing transfer records (chunked, batched)...")
+        chunk_idx += 1
+        if chunk_idx == 1:
+            logger.info("Processing transfer records (chunked, ON CONFLICT)...")
 
-        new_records: list[dict] = []
-        update_records: list[tuple[int, dict]] = []
+        rows: list[dict] = []
 
         for row in chunk.itertuples(index=False):
-            # Parse fee
+            total_seen += 1
+
+            # Parse fee — parse_fee may flag the row as an exclude (loan returns)
             fee_str = _safe_str(getattr(row, "transfer_fee", None))
             fee_cents, is_loan, exclude = parse_fee(fee_str)
-
             if exclude:
                 excluded_loans += 1
                 continue
@@ -603,57 +597,44 @@ def ingest_transfers(session: Session, data_dir: Path) -> int:
                 skipped += 1
                 continue
 
-            natural_key = (player_id, transfer_date, from_club_id, to_club_id)
-            fields = {
+            rows.append({
+                "player_id": player_id,
+                "from_club_id": from_club_id,
+                "to_club_id": to_club_id,
+                "transfer_date": transfer_date,
                 "fee_eur": fee_cents,
                 "fee_is_loan": is_loan,
                 "transfer_window": window,
                 "season": season,
-            }
+            })
 
-            if natural_key in existing:
-                tid, old_fee, old_loan, old_window, old_season = existing[natural_key]
-                if (old_fee == fee_cents and old_loan == is_loan
-                        and old_window == window and old_season == season):
-                    unchanged += 1
-                else:
-                    update_records.append((tid, fields))
-            else:
-                new_records.append({
-                    "player_id": player_id,
-                    "from_club_id": from_club_id,
-                    "to_club_id": to_club_id,
-                    "transfer_date": transfer_date,
-                    **fields,
-                })
-                existing[natural_key] = (-1, fee_cents, is_loan, window, season)
-
-            count += 1
-
-        # Bulk insert new transfers
-        if new_records:
-            session.execute(insert(Transfer), new_records)
-
-        # Update existing (re-run only)
-        for transfer_id, fields in update_records:
-            session.query(Transfer).filter(Transfer.id == transfer_id).update(fields)
-
-        if new_records or update_records:
+        if rows:
+            ins, upd = upsert_chunk(
+                session, Transfer, rows,
+                conflict_columns=["player_id", "transfer_date", "from_club_id", "to_club_id"],
+                update_columns=["fee_eur", "fee_is_loan", "transfer_window", "season"],
+            )
+            inserted_total += ins
+            updated_total += upd
             session.flush()
 
-        if count > 0 and count % 5000 < CHUNK_SIZE:
-            logger.info("  ... %d transfers processed", count)
+        if chunk_idx % 5 == 0:
+            logger.info("  ... %d transfer chunks processed", chunk_idx)
 
     session.commit()
     logger.info(
-        "Transfers ingested: %d records. Skipped: %d. Excluded loan returns: %d. Unchanged (no-op): %d.",
-        count, skipped, excluded_loans, unchanged,
+        "Transfers ingested: %d inserted, %d updated. Skipped: %d. Excluded loan returns: %d. Seen: %d.",
+        inserted_total, updated_total, skipped, excluded_loans, total_seen,
     )
-    return count
+    return inserted_total + updated_total
 
 
 def ingest_valuations(session: Session, data_dir: Path) -> int:
-    """Upsert player valuations from player_valuations.csv. Returns count."""
+    """Upsert player_valuations rows via ON CONFLICT (player_id, valuation_date).
+
+    Returns total rows successfully ingested. valuation_eur is stored in cents
+    (the column name is historical — actual unit is cents, matching Transfer.fee_eur).
+    """
     _validate_schema(data_dir / "player_valuations.csv")
 
     player_tm_map: dict[str, int] = {
@@ -662,26 +643,21 @@ def ingest_valuations(session: Session, data_dir: Path) -> int:
         if p.transfermarkt_id
     }
 
-    # Load existing valuation keys with their current value for in-memory dedup
-    # and change-detection (skip UPDATE when value is unchanged).
-    existing: dict[tuple, tuple[int, int]] = {
-        (r.player_id, r.valuation_date): (r.id, r.valuation_eur)
-        for r in session.query(
-            PlayerValuation.id, PlayerValuation.player_id,
-            PlayerValuation.valuation_date, PlayerValuation.valuation_eur,
-        ).all()
-    }
-    logger.info("Loaded %d existing valuation keys for dedup.", len(existing))
-
-    count = 0
+    inserted_total = 0
+    updated_total = 0
     skipped = 0
-    unchanged = 0
+    chunk_idx = 0
+    total_seen = 0
 
-    for chunk in pd.read_csv(data_dir / "player_valuations.csv", low_memory=False, chunksize=CHUNK_SIZE):
-        new_records: list[dict] = []
-        update_records: list[tuple[int, int]] = []  # (valuation_id, new_val_cents)
+    for chunk in pd.read_csv(
+        data_dir / "player_valuations.csv", low_memory=False, chunksize=CHUNK_SIZE
+    ):
+        chunk_idx += 1
+        rows: list[dict] = []
 
         for row in chunk.itertuples(index=False):
+            total_seen += 1
+
             player_tm_id = _safe_int_str(getattr(row, "player_id", None))
             if not player_tm_id or player_tm_id not in player_tm_map:
                 skipped += 1
@@ -706,47 +682,31 @@ def ingest_valuations(session: Session, data_dir: Path) -> int:
                 skipped += 1
                 continue
 
-            key = (player_id, val_date)
+            rows.append({
+                "player_id": player_id,
+                "valuation_eur": val_cents,
+                "valuation_date": val_date,
+            })
 
-            if key in existing:
-                val_id, old_val_cents = existing[key]
-                if old_val_cents == val_cents:
-                    # Value unchanged — no UPDATE needed
-                    unchanged += 1
-                else:
-                    update_records.append((val_id, val_cents))
-            else:
-                new_records.append({
-                    "player_id": player_id,
-                    "valuation_eur": val_cents,
-                    "valuation_date": val_date,
-                })
-                existing[key] = (-1, val_cents)  # sentinel id, actual value
-
-            count += 1
-
-        # Bulk insert new valuations
-        if new_records:
-            session.execute(insert(PlayerValuation), new_records)
-
-        # Update existing (re-run only)
-        for val_id, val_cents in update_records:
-            session.query(PlayerValuation).filter(
-                PlayerValuation.id == val_id
-            ).update({"valuation_eur": val_cents})
-
-        if new_records or update_records:
+        if rows:
+            ins, upd = upsert_chunk(
+                session, PlayerValuation, rows,
+                conflict_columns=["player_id", "valuation_date"],
+                update_columns=["valuation_eur"],
+            )
+            inserted_total += ins
+            updated_total += upd
             session.flush()
 
-        if count > 0 and count % 50000 < CHUNK_SIZE:
-            logger.info("  ... %d valuations processed", count)
+        if chunk_idx % 5 == 0:
+            logger.info("  ... %d valuation chunks processed", chunk_idx)
 
     session.commit()
     logger.info(
-        "Valuations ingested: %d records. Skipped: %d. Unchanged (no-op): %d.",
-        count, skipped, unchanged,
+        "Valuations ingested: %d inserted, %d updated. Skipped: %d. Seen: %d.",
+        inserted_total, updated_total, skipped, total_seen,
     )
-    return count
+    return inserted_total + updated_total
 
 
 def update_metadata(session: Session, total_records: int, commit_hash: str | None) -> None:
