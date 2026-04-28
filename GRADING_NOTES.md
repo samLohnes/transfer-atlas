@@ -240,3 +240,39 @@ WARNINGS:
 Notes: sub-position-aware production scoring + fee-tier thresholds applied
 in T11. Distribution shift vs the prior run reflects whatever the structural
 change buys us; subsequent tasks (T13–T16) will tune from this baseline.
+
+---
+
+## Curated gate — baseline (post-T11, pre-tune)
+
+Run with `just curated`. Gate threshold: composite ≥ 78 (B+) for 8 of 10 transfers.
+
+```
+PLAYER                           GRADE   COMPOSITE  STATUS
+----------------------------------------------------------------------
+Rodri → Man City 2019            ?               —  NOT FOUND in DB
+Kanté → Chelsea 2016             ?               —  NOT FOUND in DB
+De Bruyne → Man City 2015        C+           66.6  FAIL
+Bellingham → Real Madrid 2023    C+           62.6  FAIL
+Van Dijk → Liverpool 2018        ?               —  NOT FOUND in DB
+Cancelo → Man City 2019          D            42.1  FAIL
+Alisson → Liverpool 2018         ?               —  NOT FOUND in DB
+Haaland → Man City 2022          A            89.9  PASS
+Salah → Liverpool 2017           ?               —  NOT FOUND in DB
+Álvarez → Man City 2022          ?               —  NOT FOUND in DB
+----------------------------------------------------------------------
+Curated gate: 1/10 >= B+   ✗ FAILING
+Misses:
+  - Rodri → Man City 2019 (not found)
+  - Kanté → Chelsea 2016 (not found)
+  - De Bruyne → Man City 2015 (C+ 66.6)
+  - Bellingham → Real Madrid 2023 (C+ 62.6)
+  - Van Dijk → Liverpool 2018 (not found)
+  - Cancelo → Man City 2019 (D 42.1)
+  - Alisson → Liverpool 2018 (not found)
+  - Salah → Liverpool 2017 (not found)
+  - Álvarez → Man City 2022 (not found)
+```
+
+Notes: this is the curated-list snapshot before any config tuning. Whatever
+this shows is the "structural fix only" baseline; T13+ will tune from here.
