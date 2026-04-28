@@ -438,3 +438,84 @@ Misses:
 ### Verdict
 
 Distribution gates fail (mean 49.33 still under [50, 65]); curated 6/10 → 5/10 (Álvarez regressed PASS→FAIL). Continue to T14 (further config tune).
+
+---
+
+## Iteration: tenure-success floor on value_trajectory + financial_return
+
+**Why:** in-progress GKs and long-tenure starters with poor exit fees were
+getting D/F grades despite minutes + tenure being the success signal the
+percentile components couldn't see. Heuristic stopgap until Phase 3 (FM data + ML).
+
+**Config:** `tenure_success_floor`: min_tenure_days=1460 (4y), min_minutes_pct=70, floor_score=70
+
+### Validate
+
+```
+Active version: v1.0.20260428.010424  (11475 grades, scored 2026-04-28 01:04 UTC)
+
+Mean:    49.51
+Median:  49.74
+Stddev:  24.87
+Complete vs in-progress: 5873 / 5602
+
+Letter distribution:
+grade  n     pct     bar
+-----  ----  ------  ------------------
+A      1077    9.4%
+B+     649     5.7%
+B      902     7.9%
+C+     1008    8.8%
+C      972     8.5%
+D      2527   22.0%
+F      4340   37.8%
+
+Per-position composite stats:
+pg   n     mean   median  stddev
+---  ----  -----  ------  ------
+GK   769   46.15  43.98   27.77
+DEF  3512  49.97  50.00   24.35
+MID  3345  49.97  50.00   24.57
+FWD  3849  49.35  48.61   24.95
+
+Component scores:
+component         n      coverage  nulls  mean   stddev
+----------------  -----  --------  -----  -----  ------
+minutes           7968    69.4%    3507   50.00  28.87
+production        7446    64.9%    4029   50.00  28.76
+value_trajectory  11465   99.9%    10     56.24  35.78
+financial_return  5871    51.2%    5604   35.01  29.44
+
+WARNINGS:
+  - Mean composite (49.5) outside healthy range (50.0, 65.0).
+```
+
+### Curated
+
+```
+PLAYER                           FLOOR GRADE   COMPOSITE  STATUS
+----------------------------------------------------------------------------
+Rodri → Man City 2019            B+    C+           67.6  FAIL
+Kanté → Chelsea 2016             B+    D            54.2  FAIL
+De Bruyne → Man City 2015        B+    C+           67.6  FAIL
+Bellingham → Real Madrid 2023    C     C+           62.6  PASS
+Van Dijk → Liverpool 2018        B+    B+           80.9  PASS
+Cancelo → Man City 2019          D     D            44.5  PASS
+Alisson → Liverpool 2018         B+    B            73.5  FAIL
+Haaland → Man City 2022          B+    A            89.9  PASS
+Salah → Liverpool 2017           B+    A            94.2  PASS
+Álvarez → Man City 2022          B+    B            77.2  FAIL
+----------------------------------------------------------------------------
+Curated gate: 5/10 clear their per-transfer floor   ✗ FAILING
+
+Misses:
+  - Rodri → Man City 2019 (C+ 67.6, floor B+ 78)
+  - Kanté → Chelsea 2016 (D 54.2, floor B+ 78)
+  - De Bruyne → Man City 2015 (C+ 67.6, floor B+ 78)
+  - Alisson → Liverpool 2018 (B 73.5, floor B+ 78)
+  - Álvarez → Man City 2022 (B 77.2, floor B+ 78)
+```
+
+### Verdict
+
+Curated 5/10 → 5/10 (no change). Distribution mean barely lifted (49.33 → 49.51) and the long-tenure misses (Kanté, Alisson, De Bruyne, Rodri) still sit below B+ — the 70-floor on two components doesn't drag the composite past 78 when the other halves (production for in-progress GK, financial_return for sub-€0 exits) remain weak. Continue to T15 peer-matching audit; the floor helps but doesn't solve composite-level pass-through.

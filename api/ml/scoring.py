@@ -165,10 +165,39 @@ def score_production(
     return None, tier_idx, label
 
 
+def _apply_tenure_success_floor(
+    score: float | None,
+    feature_row: TransferFeature,
+    floor_config: dict,
+) -> float | None:
+    """Floor a sigmoid component when this looks like a successful long-tenure stint.
+
+    Long, high-minutes stints aren't punished for natural value depreciation or
+    poor exit fees — minutes + tenure ARE the success signal. Returns None
+    unchanged, otherwise max(score, floor_score) when conditions match.
+
+    Heuristic stopgap until the Phase 3 ML path can learn this from FM attributes.
+    """
+    if score is None:
+        return None
+    min_tenure_days = floor_config.get("min_tenure_days", 1460)
+    min_minutes_pct = floor_config.get("min_minutes_pct", 70.0)
+    floor_score = floor_config.get("floor_score", 70.0)
+
+    tenure_days = feature_row.tenure_days
+    minutes_pct = feature_row.minutes_pct
+    if tenure_days is None or minutes_pct is None:
+        return score
+    if tenure_days >= min_tenure_days and float(minutes_pct) >= min_minutes_pct:
+        return max(score, floor_score)
+    return score
+
+
 def score_value_trajectory(
     feature_row: TransferFeature,
     calibrated_rates: dict,
     scale: float,
+    floor_config: dict | None = None,
 ) -> tuple[float | None, float | None]:
     """Returns (score, expected_pct_as_percentage_or_None).
 
@@ -197,14 +226,25 @@ def score_value_trajectory(
     )
     expected_pct = expected_fraction * 100.0
     diff = float(feature_row.value_change_pct) - expected_pct
-    return clip_score(sigmoid_to_100(diff, scale)), expected_pct
+    raw_score = clip_score(sigmoid_to_100(diff, scale))
+    floored = _apply_tenure_success_floor(raw_score, feature_row, floor_config or {})
+    return floored, expected_pct
 
 
-def score_financial_return(feature_row: TransferFeature, scale: float) -> float | None:
-    """Sigmoid mapping of `exit_ratio_vs_expected`. None for in-progress transfers."""
+def score_financial_return(
+    feature_row: TransferFeature,
+    scale: float,
+    floor_config: dict | None = None,
+) -> float | None:
+    """Sigmoid mapping of `exit_ratio_vs_expected`. None for in-progress transfers.
+
+    Long-tenure high-minutes stints get the floor applied to soften penalties
+    for poor exit fees on what was nonetheless a successful stint.
+    """
     if feature_row.exit_ratio_vs_expected is None:
         return None
-    return clip_score(sigmoid_to_100(float(feature_row.exit_ratio_vs_expected), scale))
+    raw_score = clip_score(sigmoid_to_100(float(feature_row.exit_ratio_vs_expected), scale))
+    return _apply_tenure_success_floor(raw_score, feature_row, floor_config or {})
 
 
 # ---------------------------------------------------------------------------
