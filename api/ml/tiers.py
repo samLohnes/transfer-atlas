@@ -25,10 +25,14 @@ def compute_tier_boundaries(
 ) -> dict[str, list[tuple[int, int | None, str]]]:
     """Compute fee-tier boundaries from TransferFeature data (pure read; no writes).
 
-    Returns an in-memory cache keyed by position_group:
-        {position_group: [(lower_eur, upper_eur, label), ...]}
+    Returns an in-memory cache keyed by scoring_group:
+        {scoring_group: [(lower_eur, upper_eur, label), ...]}
     where `upper_eur` is None for the top tier (open-ended). The scoring step
     resolves each transfer's tier from this cache via `lookup_tier`.
+
+    `scoring_group` = `position_subgroup or position_group` so MID splits into
+    DM/CM/AM and DEF splits into CB/FB, while GK and FWD stay at the
+    position_group level (their position_subgroup collapses back to the group).
     """
     boundaries = config["fee_tiers"]["boundaries"]  # e.g. [0, 25, 50, 75, 90, 100]
     labels: Sequence[str] = config["fee_tiers"]["labels"]
@@ -37,20 +41,25 @@ def compute_tier_boundaries(
             f"fee_tiers config malformed: {len(boundaries)} boundaries vs {len(labels)} labels."
         )
 
-    fees_by_pg: dict[str, list[int]] = defaultdict(list)
+    fees_by_sg: dict[str, list[int]] = defaultdict(list)
     rows = (
-        session.query(TransferFeature.position_group, TransferFeature.entry_fee_eur)
+        session.query(
+            TransferFeature.position_group,
+            TransferFeature.position_subgroup,
+            TransferFeature.entry_fee_eur,
+        )
         .filter(
             TransferFeature.position_group.is_not(None),
             TransferFeature.entry_fee_eur.is_not(None),
         )
         .all()
     )
-    for pg, fee in rows:
-        fees_by_pg[pg].append(int(fee))
+    for pg, psg, fee in rows:
+        scoring_group = psg or pg
+        fees_by_sg[scoring_group].append(int(fee))
 
     cache: dict[str, list[tuple[int, int | None, str]]] = {}
-    for pg, fees in fees_by_pg.items():
+    for sg, fees in fees_by_sg.items():
         if not fees:
             continue
         arr = np.array(fees, dtype=np.int64)
@@ -62,9 +71,9 @@ def compute_tier_boundaries(
             upper = percentile_values[i] if i < len(percentile_values) else None
             tier_rows.append((prev, upper, label))
             prev = upper if upper is not None else prev
-        cache[pg] = tier_rows
+        cache[sg] = tier_rows
 
-    logger.info("Fee tiers computed for %d position group(s).", len(cache))
+    logger.info("Fee tiers computed for %d scoring group(s).", len(cache))
     return cache
 
 
@@ -73,13 +82,18 @@ def persist_tier_thresholds(
     scoring_version_id: int,
     cache: dict[str, list[tuple[int, int | None, str]]],
 ) -> int:
-    """Write one FeeTierThreshold row per (position_group, tier) for the given scoring run."""
+    """Write one FeeTierThreshold row per (scoring_group, tier) for the given scoring run.
+
+    Note: the table column is named `position_group` for legacy reasons but now
+    holds `scoring_group` values (DM/CM/AM/CB/FB plus the unchanged GK/FWD), so
+    callers must look up by scoring_group rather than the raw position_group.
+    """
     persist_rows: list[dict] = []
-    for pg, tier_rows in cache.items():
+    for sg, tier_rows in cache.items():
         for i, (lower, upper, label) in enumerate(tier_rows, start=1):
             persist_rows.append({
                 "scoring_version_id": scoring_version_id,
-                "position_group": pg,
+                "position_group": sg,
                 "tier": i,
                 "lower_fee_eur": lower,
                 "upper_fee_eur": upper,
@@ -94,15 +108,16 @@ def persist_tier_thresholds(
 
 def lookup_tier(
     cache: dict[str, list[tuple[int, int | None, str]]],
-    position_group: str,
+    scoring_group: str,
     fee_eur: int,
 ) -> tuple[int, str] | None:
-    """Resolve a fee to its (tier_index_1based, label) within the position group.
+    """Resolve a fee to its (tier_index_1based, label) within the scoring group.
 
-    Returns None when the position group has no recorded tiers (e.g. no qualifying
-    transfers for that group, which should be unusual on real data).
+    `scoring_group` is `position_subgroup or position_group` (DM/CM/AM/CB/FB
+    plus the unchanged GK/FWD). Returns None when the group has no recorded
+    tiers (e.g. no qualifying transfers, unusual on real data).
     """
-    tiers = cache.get(position_group)
+    tiers = cache.get(scoring_group)
     if not tiers:
         return None
     for i, (lower, upper, label) in enumerate(tiers, start=1):
