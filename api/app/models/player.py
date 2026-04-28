@@ -18,6 +18,7 @@ class Player(Base):
     date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     position: Mapped[str | None] = mapped_column(String(50), nullable=True)
     position_group: Mapped[str | None] = mapped_column(String(3), nullable=True, index=True)
+    sub_position: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
     nationality: Mapped[str | None] = mapped_column(String(100), nullable=True)
     transfermarkt_id: Mapped[str | None] = mapped_column(
         String(50), unique=True, nullable=True
