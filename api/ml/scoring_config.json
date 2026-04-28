@@ -11,8 +11,8 @@
   },
   "tenure_success_floor": {
     "min_tenure_days": 1460,
-    "min_minutes_pct": 70.0,
-    "floor_score": 70.0,
+    "min_minutes_pct": 55.0,
+    "floor_score": 78.0,
     "_note": "Long-tenure regulars don't get punished for natural value depreciation or poor exit fees. minutes + tenure ARE the success signal. Phase 3 ML path will replace this heuristic."
   },
   "fee_tiers": {
