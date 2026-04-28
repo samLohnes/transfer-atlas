@@ -217,3 +217,93 @@ def test_appearance_club_id_change_alone_writes_through():
             ).one()
             row.club_id = original_club_id
             s.commit()
+
+
+def test_transfer_null_date_does_not_duplicate_on_rerun():
+    """Regression: Postgres treats NULLs as distinct under default unique-index
+    semantics, so an ON CONFLICT path on a tuple containing a NULL key would
+    insert duplicates instead of matching. Migration to NULLS NOT DISTINCT
+    fixes this. Verifies via direct upsert_chunk usage against the live transfers
+    table — round-trips two identical NULL-date rows and asserts only one
+    survives.
+    """
+    import os
+
+    if not os.environ.get("DATABASE_URL", "").startswith("postgresql"):
+        pytest.skip("requires Postgres")
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session as SASession
+
+    from app.models import Club, Player, Transfer
+    from pipeline.upsert import upsert_chunk
+
+    # conftest stubs app.config to SQLite, so build an engine directly from
+    # DATABASE_URL like the appearances integration test above does.
+    engine = create_engine(os.environ["DATABASE_URL"])
+    session = SASession(engine)
+    try:
+        # Pick any two existing club ids to reference (FK satisfied) and any one player.
+        from_club = session.query(Club).first()
+        to_club = (
+            session.query(Club)
+            .filter(Club.id != from_club.id)
+            .first()
+        )
+        player = session.query(Player).first()
+        assert from_club and to_club and player, "run `just pipeline` first"
+
+        sentinel = {
+            "player_id": player.id,
+            "from_club_id": from_club.id,
+            "to_club_id": to_club.id,
+            "transfer_date": None,
+            "fee_eur": None,
+            "fee_is_loan": False,
+            "transfer_window": "Summer 1900",  # unique sentinel window so we can clean up
+            "season": "1900",
+        }
+
+        # Round 1: insert
+        ins, upd = upsert_chunk(
+            session, Transfer, [sentinel],
+            conflict_columns=["player_id", "transfer_date", "from_club_id", "to_club_id"],
+            update_columns=["fee_eur", "fee_is_loan", "transfer_window", "season"],
+        )
+        session.commit()
+        assert (ins, upd) == (1, 0)
+
+        # Round 2: same row again — must match the existing NULL-date row, not insert a dup.
+        ins2, upd2 = upsert_chunk(
+            session, Transfer, [sentinel],
+            conflict_columns=["player_id", "transfer_date", "from_club_id", "to_club_id"],
+            update_columns=["fee_eur", "fee_is_loan", "transfer_window", "season"],
+        )
+        session.commit()
+        assert (ins2, upd2) == (0, 0), (
+            f"NULL-date upsert produced (ins={ins2}, upd={upd2}); expected (0, 0). "
+            "Migration to NULLS NOT DISTINCT may not have applied."
+        )
+
+        # Verify there's exactly one row matching the sentinel.
+        count = (
+            session.query(Transfer)
+            .filter(
+                Transfer.player_id == player.id,
+                Transfer.from_club_id == from_club.id,
+                Transfer.to_club_id == to_club.id,
+                Transfer.transfer_date.is_(None),
+                Transfer.transfer_window == "Summer 1900",
+            )
+            .count()
+        )
+        assert count == 1, f"expected exactly 1 sentinel row, found {count}"
+
+    finally:
+        # Clean up the sentinel row(s).
+        session.query(Transfer).filter(
+            Transfer.transfer_window == "Summer 1900"
+        ).delete(synchronize_session=False)
+        session.commit()
+        session.close()
+        engine.dispose()
