@@ -97,3 +97,35 @@ def is_worth_the_fee(composite: Decimal | float) -> bool:
 def clip_score(value: float) -> float:
     """Clip any computed score to the [0, 100] band before persistence."""
     return max(0.0, min(100.0, value))
+
+
+# Maps a Transfermarkt sub_position string to a coarser scoring subgroup.
+# Unmapped values fall back to the position_group, preserving today's behavior.
+_SUBPOSITION_TO_SUBGROUP: dict[str, str] = {
+    "Defensive Midfield": "DM",
+    "Central Midfield": "CM",
+    "Right Midfield": "CM",
+    "Left Midfield": "CM",
+    "Attacking Midfield": "AM",
+    "Centre-Back": "CB",
+    "Right-Back": "FB",
+    "Left-Back": "FB",
+    "Goalkeeper": "GK",
+    "Centre-Forward": "FWD",
+    "Left Winger": "FWD",
+    "Right Winger": "FWD",
+    "Second Striker": "FWD",
+}
+
+
+def position_subgroup(sub_position: str | None, position_group: str | None) -> str | None:
+    """Return the scoring-subgroup label for a player.
+
+    GK and FWD always collapse to position_group ("GK" / "FWD"); MID splits
+    into DM/CM/AM; DEF splits into CB/FB. Unknown or missing sub_position
+    falls back to the position_group, which preserves the prior comparison
+    semantics for any rows the mapping doesn't cover.
+    """
+    if sub_position and sub_position in _SUBPOSITION_TO_SUBGROUP:
+        return _SUBPOSITION_TO_SUBGROUP[sub_position]
+    return position_group
