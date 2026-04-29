@@ -46,19 +46,19 @@ db-shell:
 
 # Run the data pipeline (exits early if source commit is unchanged)
 pipeline:
-    DATABASE_URL={{db_url}} python -m pipeline.run
+    DATABASE_URL={{db_url}} .venv/bin/python -m pipeline.run
 
 # Force re-run the pipeline even if source data hasn't changed
 pipeline-force:
-    DATABASE_URL={{db_url}} python -m pipeline.run --force
+    DATABASE_URL={{db_url}} .venv/bin/python -m pipeline.run --force
 
 # Run the data pipeline with --strict (exits non-zero if quality checks fail)
 pipeline-strict:
-    DATABASE_URL={{db_url}} python -m pipeline.run --strict
+    DATABASE_URL={{db_url}} .venv/bin/python -m pipeline.run --strict
 
 # Run data quality checks against the current database state (read-only)
 quality:
-    DATABASE_URL={{db_url}} python -c "from app.database import SessionLocal; from pipeline.quality import run_quality_checks, log_report; import logging; logging.basicConfig(level=logging.INFO, format='%(levelname)-5s %(message)s'); s = SessionLocal(); log_report(run_quality_checks(s)); s.close()"
+    DATABASE_URL={{db_url}} .venv/bin/python -c "from app.database import SessionLocal; from pipeline.quality import run_quality_checks, log_report; import logging; logging.basicConfig(level=logging.INFO, format='%(levelname)-5s %(message)s'); s = SessionLocal(); log_report(run_quality_checks(s)); s.close()"
 
 # ---- Lint / syntax ----
 
