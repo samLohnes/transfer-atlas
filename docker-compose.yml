@@ -34,6 +34,11 @@ services:
     build:
       context: ./web
       dockerfile: Dockerfile
+    environment:
+      # Inside docker, vite proxies `/api/*` to the `api` service via the
+      # compose network. On the host (`npm run dev`) the default in
+      # vite.config.ts (http://localhost:8000) is used instead.
+      VITE_API_PROXY_TARGET: http://api:8000
     ports:
       - "3000:3000"
     depends_on:
