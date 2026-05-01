@@ -619,3 +619,204 @@ class TestFullPipelineE2E:
         }
 
         assert first_run == second_run
+
+
+class TestIngestAppearances:
+    """Direct tests for ingest_appearances against the seeded shared fixture.
+
+    Pins behavior so the polars rewrite in PR 2 must produce identical results.
+    """
+
+    def test_inserts_valid_appearances(self, seeded_session, data_dir):
+        from app.models import Appearance
+        from pipeline.ingest_appearances import ingest_appearances
+
+        ingested = ingest_appearances(seeded_session, data_dir)
+        appearances = seeded_session.query(Appearance).all()
+
+        # 2 valid rows from the fixture; 4 skipped (unknown player, unknown club,
+        # missing game_id, bad date)
+        assert ingested == 2
+        assert len(appearances) == 2
+        game_ids = {a.game_id for a in appearances}
+        assert game_ids == {"g1"}  # both valid rows share game_id g1
+
+    def test_skips_unknown_player(self, seeded_session, data_dir):
+        from app.models import Appearance
+        from pipeline.ingest_appearances import ingest_appearances
+
+        ingest_appearances(seeded_session, data_dir)
+        # The unknown-player row (player_id=999) must not have been inserted.
+        # Confirm via player_id link only — there's no player_id 999 in seeded_session.
+        appearances = seeded_session.query(Appearance).all()
+        player_ids = {a.player_id for a in appearances}
+        assert 999 not in player_ids
+
+    def test_skips_unknown_club(self, seeded_session, data_dir):
+        from app.models import Appearance
+        from pipeline.ingest_appearances import ingest_appearances
+
+        ingest_appearances(seeded_session, data_dir)
+        appearances = seeded_session.query(Appearance).all()
+        # Game g2 used unknown club — must not appear.
+        assert all(a.game_id != "g2" for a in appearances)
+
+    def test_skips_missing_game_id(self, seeded_session, data_dir):
+        from app.models import Appearance
+        from pipeline.ingest_appearances import ingest_appearances
+
+        ingest_appearances(seeded_session, data_dir)
+        appearances = seeded_session.query(Appearance).all()
+        # Row with empty game_id should be filtered out.
+        assert all(a.game_id != "" for a in appearances)
+        assert all(a.game_id is not None for a in appearances)
+
+    def test_skips_bad_date(self, seeded_session, data_dir):
+        from app.models import Appearance
+        from pipeline.ingest_appearances import ingest_appearances
+
+        ingest_appearances(seeded_session, data_dir)
+        appearances = seeded_session.query(Appearance).all()
+        # Row with date="not-a-date" used game_id g4 — must not appear.
+        assert all(a.game_id != "g4" for a in appearances)
+
+    def test_coerces_nan_stats_to_zero(self, seeded_session, tmp_path):
+        """NaN values in stat columns must coerce to 0, not propagate as null."""
+        from app.models import Appearance
+        from pipeline.ingest_appearances import ingest_appearances
+        from tests.conftest import write_csv
+
+        write_csv(tmp_path / "appearances.csv", [
+            "appearance_id", "player_id", "game_id", "player_club_id",
+            "player_current_club_id", "player_name", "competition_id", "date",
+            "yellow_cards", "red_cards", "goals", "assists", "minutes_played",
+        ], [
+            # Empty stat fields — should coerce to 0
+            {"appearance_id": "100_gA", "player_id": "100", "game_id": "gA",
+             "player_club_id": "10", "player_current_club_id": "10",
+             "player_name": "Player One", "competition_id": "GB1",
+             "date": "2023-08-12", "yellow_cards": "", "red_cards": "",
+             "goals": "", "assists": "", "minutes_played": ""},
+        ])
+
+        ingest_appearances(seeded_session, tmp_path)
+        rows = seeded_session.query(Appearance).filter_by(game_id="gA").all()
+        assert len(rows) == 1
+        a = rows[0]
+        assert a.minutes_played == 0
+        assert a.goals == 0
+        assert a.assists == 0
+        assert a.yellow_cards == 0
+        assert a.red_cards == 0
+
+    def test_intra_chunk_duplicates(self, seeded_session, tmp_path):
+        """Same (player_id, game_id) appearing twice in one CSV: last write wins.
+
+        Pins the dedup-pre-pass contract in upsert_chunk for ON CONFLICT semantics.
+        """
+        from app.models import Appearance
+        from pipeline.ingest_appearances import ingest_appearances
+        from tests.conftest import write_csv
+
+        write_csv(tmp_path / "appearances.csv", [
+            "appearance_id", "player_id", "game_id", "player_club_id",
+            "player_current_club_id", "player_name", "competition_id", "date",
+            "yellow_cards", "red_cards", "goals", "assists", "minutes_played",
+        ], [
+            # First row
+            {"appearance_id": "100_gB_v1", "player_id": "100", "game_id": "gB",
+             "player_club_id": "10", "player_current_club_id": "10",
+             "player_name": "Player One", "competition_id": "GB1",
+             "date": "2023-08-12", "yellow_cards": "0", "red_cards": "0",
+             "goals": "0", "assists": "0", "minutes_played": "60"},
+            # Same player_id+game_id, different stats — last should win
+            {"appearance_id": "100_gB_v2", "player_id": "100", "game_id": "gB",
+             "player_club_id": "10", "player_current_club_id": "10",
+             "player_name": "Player One", "competition_id": "GB1",
+             "date": "2023-08-12", "yellow_cards": "1", "red_cards": "0",
+             "goals": "2", "assists": "1", "minutes_played": "90"},
+        ])
+
+        ingest_appearances(seeded_session, tmp_path)
+        rows = seeded_session.query(Appearance).filter_by(game_id="gB").all()
+        assert len(rows) == 1
+        a = rows[0]
+        # Last-write-wins: the v2 stats should be present.
+        assert a.goals == 2
+        assert a.assists == 1
+        assert a.minutes_played == 90
+        assert a.yellow_cards == 1
+
+    def test_upsert_updates_existing(self, seeded_session, tmp_path):
+        """Re-ingest with changed stats updates the row in place."""
+        from app.models import Appearance
+        from pipeline.ingest_appearances import ingest_appearances
+        from tests.conftest import write_csv
+
+        # First pass
+        write_csv(tmp_path / "appearances.csv", [
+            "appearance_id", "player_id", "game_id", "player_club_id",
+            "player_current_club_id", "player_name", "competition_id", "date",
+            "yellow_cards", "red_cards", "goals", "assists", "minutes_played",
+        ], [
+            {"appearance_id": "100_gC_v1", "player_id": "100", "game_id": "gC",
+             "player_club_id": "10", "player_current_club_id": "10",
+             "player_name": "Player One", "competition_id": "GB1",
+             "date": "2023-08-12", "yellow_cards": "0", "red_cards": "0",
+             "goals": "0", "assists": "0", "minutes_played": "45"},
+        ])
+        ingest_appearances(seeded_session, tmp_path)
+        rows = seeded_session.query(Appearance).filter_by(game_id="gC").all()
+        assert len(rows) == 1
+        original_id = rows[0].id
+        assert rows[0].minutes_played == 45
+
+        # Second pass with changed stats
+        write_csv(tmp_path / "appearances.csv", [
+            "appearance_id", "player_id", "game_id", "player_club_id",
+            "player_current_club_id", "player_name", "competition_id", "date",
+            "yellow_cards", "red_cards", "goals", "assists", "minutes_played",
+        ], [
+            {"appearance_id": "100_gC_v2", "player_id": "100", "game_id": "gC",
+             "player_club_id": "10", "player_current_club_id": "10",
+             "player_name": "Player One", "competition_id": "GB1",
+             "date": "2023-08-12", "yellow_cards": "1", "red_cards": "0",
+             "goals": "1", "assists": "0", "minutes_played": "90"},
+        ])
+        ingest_appearances(seeded_session, tmp_path)
+        rows = seeded_session.query(Appearance).filter_by(game_id="gC").all()
+        assert len(rows) == 1
+        assert rows[0].id == original_id  # same row, updated in place
+        assert rows[0].minutes_played == 90
+        assert rows[0].goals == 1
+        assert rows[0].yellow_cards == 1
+
+    def test_unchanged_values_preserve_data(self, seeded_session, tmp_path):
+        """Re-ingest with identical stats is idempotent (no row churn)."""
+        from app.models import Appearance
+        from pipeline.ingest_appearances import ingest_appearances
+        from tests.conftest import write_csv
+
+        rows_csv = [
+            {"appearance_id": "100_gD", "player_id": "100", "game_id": "gD",
+             "player_club_id": "10", "player_current_club_id": "10",
+             "player_name": "Player One", "competition_id": "GB1",
+             "date": "2023-08-12", "yellow_cards": "1", "red_cards": "0",
+             "goals": "2", "assists": "1", "minutes_played": "90"},
+        ]
+        fields = [
+            "appearance_id", "player_id", "game_id", "player_club_id",
+            "player_current_club_id", "player_name", "competition_id", "date",
+            "yellow_cards", "red_cards", "goals", "assists", "minutes_played",
+        ]
+
+        write_csv(tmp_path / "appearances.csv", fields, rows_csv)
+        ingest_appearances(seeded_session, tmp_path)
+        first = seeded_session.query(Appearance).filter_by(game_id="gD").one()
+        first_snapshot = (first.id, first.goals, first.assists, first.minutes_played)
+
+        # Second ingest with identical CSV
+        ingest_appearances(seeded_session, tmp_path)
+        second = seeded_session.query(Appearance).filter_by(game_id="gD").one()
+        second_snapshot = (second.id, second.goals, second.assists, second.minutes_played)
+        assert first_snapshot == second_snapshot
