@@ -746,3 +746,77 @@ class TestIngestAppearances:
         assert a.assists == 1
         assert a.minutes_played == 90
         assert a.yellow_cards == 1
+
+    def test_upsert_updates_existing(self, seeded_session, tmp_path):
+        """Re-ingest with changed stats updates the row in place."""
+        from app.models import Appearance
+        from pipeline.ingest_appearances import ingest_appearances
+        from tests.conftest import write_csv
+
+        # First pass
+        write_csv(tmp_path / "appearances.csv", [
+            "appearance_id", "player_id", "game_id", "player_club_id",
+            "player_current_club_id", "player_name", "competition_id", "date",
+            "yellow_cards", "red_cards", "goals", "assists", "minutes_played",
+        ], [
+            {"appearance_id": "100_gC_v1", "player_id": "100", "game_id": "gC",
+             "player_club_id": "10", "player_current_club_id": "10",
+             "player_name": "Player One", "competition_id": "GB1",
+             "date": "2023-08-12", "yellow_cards": "0", "red_cards": "0",
+             "goals": "0", "assists": "0", "minutes_played": "45"},
+        ])
+        ingest_appearances(seeded_session, tmp_path)
+        rows = seeded_session.query(Appearance).filter_by(game_id="gC").all()
+        assert len(rows) == 1
+        original_id = rows[0].id
+        assert rows[0].minutes_played == 45
+
+        # Second pass with changed stats
+        write_csv(tmp_path / "appearances.csv", [
+            "appearance_id", "player_id", "game_id", "player_club_id",
+            "player_current_club_id", "player_name", "competition_id", "date",
+            "yellow_cards", "red_cards", "goals", "assists", "minutes_played",
+        ], [
+            {"appearance_id": "100_gC_v2", "player_id": "100", "game_id": "gC",
+             "player_club_id": "10", "player_current_club_id": "10",
+             "player_name": "Player One", "competition_id": "GB1",
+             "date": "2023-08-12", "yellow_cards": "1", "red_cards": "0",
+             "goals": "1", "assists": "0", "minutes_played": "90"},
+        ])
+        ingest_appearances(seeded_session, tmp_path)
+        rows = seeded_session.query(Appearance).filter_by(game_id="gC").all()
+        assert len(rows) == 1
+        assert rows[0].id == original_id  # same row, updated in place
+        assert rows[0].minutes_played == 90
+        assert rows[0].goals == 1
+        assert rows[0].yellow_cards == 1
+
+    def test_unchanged_values_preserve_data(self, seeded_session, tmp_path):
+        """Re-ingest with identical stats is idempotent (no row churn)."""
+        from app.models import Appearance
+        from pipeline.ingest_appearances import ingest_appearances
+        from tests.conftest import write_csv
+
+        rows_csv = [
+            {"appearance_id": "100_gD", "player_id": "100", "game_id": "gD",
+             "player_club_id": "10", "player_current_club_id": "10",
+             "player_name": "Player One", "competition_id": "GB1",
+             "date": "2023-08-12", "yellow_cards": "1", "red_cards": "0",
+             "goals": "2", "assists": "1", "minutes_played": "90"},
+        ]
+        fields = [
+            "appearance_id", "player_id", "game_id", "player_club_id",
+            "player_current_club_id", "player_name", "competition_id", "date",
+            "yellow_cards", "red_cards", "goals", "assists", "minutes_played",
+        ]
+
+        write_csv(tmp_path / "appearances.csv", fields, rows_csv)
+        ingest_appearances(seeded_session, tmp_path)
+        first = seeded_session.query(Appearance).filter_by(game_id="gD").one()
+        first_snapshot = (first.id, first.goals, first.assists, first.minutes_played)
+
+        # Second ingest with identical CSV
+        ingest_appearances(seeded_session, tmp_path)
+        second = seeded_session.query(Appearance).filter_by(game_id="gD").one()
+        second_snapshot = (second.id, second.goals, second.assists, second.minutes_played)
+        assert first_snapshot == second_snapshot
