@@ -1,6 +1,7 @@
 """Database ingestion steps for each entity type."""
 
 import logging
+import math
 from datetime import date, datetime
 from pathlib import Path
 
@@ -204,43 +205,65 @@ def _validate_schema(csv_path: Path) -> None:
         )
 
 
+def _is_null(value: object) -> bool:
+    """Check if a value is None, empty string, or NaN — without pandas.
+
+    Also treats pandas NA/NaT-like objects (which raise on bool coercion) as null.
+    """
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value == ""
+    if isinstance(value, float) and math.isnan(value):
+        return True
+    # Catch pandas NA / NaT and similar objects whose bool() raises TypeError
+    try:
+        bool(value)
+    except (TypeError, ValueError):
+        return True
+    return False
+
+
 def _safe_str(value: object) -> str | None:
     """Convert a value to string, returning None for NaN/empty."""
-    if pd.isna(value) or value == "":
+    if _is_null(value):
         return None
     return str(value)
 
 
 def _safe_int_str(value: object) -> str | None:
     """Convert a numeric value to its int string form (e.g. 100.0 → '100')."""
-    if pd.isna(value):
+    if _is_null(value):
         return None
-    return str(int(value))
+    try:
+        return str(int(float(value)))
+    except (ValueError, TypeError):
+        return None
 
 
 def _coerce_int_nullable(value: object) -> int | None:
-    """Coerce a value to int, preserving None for NaN/missing (unlike `_coerce_int_default`)."""
-    if value is None or pd.isna(value) or value == "":
+    """Coerce a value to int, preserving None for NaN/missing."""
+    if _is_null(value):
         return None
     try:
-        return int(value)
+        return int(float(value))
     except (ValueError, TypeError):
         return None
 
 
 def _coerce_int_default(value: object, default: int = 0) -> int:
     """Coerce a value to int, falling back to `default` for NaN/missing/unparseable."""
-    if value is None or pd.isna(value) or value == "":
+    if _is_null(value):
         return default
     try:
-        return int(value)
+        return int(float(value))
     except (ValueError, TypeError):
         return default
 
 
 def _normalize_foot(value: object) -> str | None:
     """Normalize preferred-foot to title case ('Left', 'Right', 'Both'). Unknown → None."""
-    if value is None or pd.isna(value) or value == "":
+    if _is_null(value):
         return None
     s = str(value).strip().lower()
     if s in ("left", "right", "both"):
@@ -250,7 +273,7 @@ def _normalize_foot(value: object) -> str | None:
 
 def _market_value_to_cents(value: object) -> int | None:
     """Convert a EUR numeric (e.g. 75000000.0) to EUR cents (7500000000). NaN/empty → None."""
-    if value is None or pd.isna(value) or value == "":
+    if _is_null(value):
         return None
     try:
         return int(float(value) * 100)
@@ -259,13 +282,41 @@ def _market_value_to_cents(value: object) -> int | None:
 
 
 def _parse_date(value: object) -> date | None:
-    """Parse a date value, tolerating malformed strings via pandas' `errors='coerce'`."""
-    if value is None or pd.isna(value) or value == "":
+    """Parse a date value, tolerating malformed strings.
+
+    Accepts ISO `YYYY-MM-DD`, US `MM/DD/YYYY`, datetime/date objects, and pandas
+    Timestamp instances (via `.date()` duck-typing). Anything else returns None.
+    """
+    if _is_null(value):
         return None
-    dt = pd.to_datetime(value, errors="coerce")
-    if pd.isna(dt):
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    # pandas Timestamp duck-typing — has a callable .date() returning a date
+    if hasattr(value, "date") and callable(getattr(value, "date")):
+        try:
+            d = value.date()
+            if isinstance(d, date) and not isinstance(d, datetime):
+                return d
+        except Exception:
+            pass
+    s = str(value).strip()
+    if not s:
         return None
-    return dt.date()
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except ValueError:
+        pass
+    try:
+        return datetime.strptime(s, "%m/%d/%Y").date()
+    except ValueError:
+        pass
+    try:
+        return datetime.fromisoformat(s).date()
+    except ValueError:
+        pass
+    return None
 
 
 def _get_or_create_country(session: Session, name: str, country_cache: dict[str, int]) -> int:
