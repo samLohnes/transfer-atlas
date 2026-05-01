@@ -4,7 +4,6 @@ Pins the contract so the polars rewrite in PR 2 has a parity target. These tests
 do not require any fixtures — they exercise pure functions.
 """
 
-import math
 from datetime import date
 
 import pandas as pd
@@ -18,6 +17,11 @@ from pipeline.ingest import (
     _parse_date,
     _safe_int_str,
     _safe_str,
+)
+from pipeline.parse import (
+    derive_transfer_window,
+    normalize_season,
+    parse_fee,
 )
 
 
@@ -131,14 +135,6 @@ class TestParseDate:
 # Parser tests — pipeline/parse.py
 # --------------------------------------------------------------------------- #
 
-from datetime import date as _date
-
-from pipeline.parse import (
-    derive_transfer_window,
-    normalize_season,
-    parse_fee,
-)
-
 
 class TestParseFee:
     @pytest.mark.parametrize("value,expected", [
@@ -172,12 +168,12 @@ class TestParseFee:
 class TestDeriveTransferWindow:
     @pytest.mark.parametrize("transfer_date,season,expected", [
         # Summer months 6–12
-        (_date(2023, 6, 1), None, "Summer 2023"),
-        (_date(2023, 8, 15), None, "Summer 2023"),
-        (_date(2023, 12, 31), None, "Summer 2023"),
+        (date(2023, 6, 1), None, "Summer 2023"),
+        (date(2023, 8, 15), None, "Summer 2023"),
+        (date(2023, 12, 31), None, "Summer 2023"),
         # Winter months 1–5
-        (_date(2024, 1, 15), None, "Winter 2024"),
-        (_date(2024, 5, 31), None, "Winter 2024"),
+        (date(2024, 1, 15), None, "Winter 2024"),
+        (date(2024, 5, 31), None, "Winter 2024"),
         # Date null → fallback to season string
         (None, "23/24", "Summer 2023"),
         (None, "2024/2025", "Summer 2024"),
