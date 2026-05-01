@@ -679,3 +679,32 @@ class TestIngestAppearances:
         appearances = seeded_session.query(Appearance).all()
         # Row with date="not-a-date" used game_id g4 — must not appear.
         assert all(a.game_id != "g4" for a in appearances)
+
+    def test_coerces_nan_stats_to_zero(self, seeded_session, tmp_path):
+        """NaN values in stat columns must coerce to 0, not propagate as null."""
+        from app.models import Appearance
+        from pipeline.ingest_appearances import ingest_appearances
+        from tests.conftest import write_csv
+
+        write_csv(tmp_path / "appearances.csv", [
+            "appearance_id", "player_id", "game_id", "player_club_id",
+            "player_current_club_id", "player_name", "competition_id", "date",
+            "yellow_cards", "red_cards", "goals", "assists", "minutes_played",
+        ], [
+            # Empty stat fields — should coerce to 0
+            {"appearance_id": "100_gA", "player_id": "100", "game_id": "gA",
+             "player_club_id": "10", "player_current_club_id": "10",
+             "player_name": "Player One", "competition_id": "GB1",
+             "date": "2023-08-12", "yellow_cards": "", "red_cards": "",
+             "goals": "", "assists": "", "minutes_played": ""},
+        ])
+
+        ingest_appearances(seeded_session, tmp_path)
+        rows = seeded_session.query(Appearance).filter_by(game_id="gA").all()
+        assert len(rows) == 1
+        a = rows[0]
+        assert a.minutes_played == 0
+        assert a.goals == 0
+        assert a.assists == 0
+        assert a.yellow_cards == 0
+        assert a.red_cards == 0
