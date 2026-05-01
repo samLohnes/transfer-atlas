@@ -708,3 +708,41 @@ class TestIngestAppearances:
         assert a.assists == 0
         assert a.yellow_cards == 0
         assert a.red_cards == 0
+
+    def test_intra_chunk_duplicates(self, seeded_session, tmp_path):
+        """Same (player_id, game_id) appearing twice in one CSV: last write wins.
+
+        Pins the dedup-pre-pass contract in upsert_chunk for ON CONFLICT semantics.
+        """
+        from app.models import Appearance
+        from pipeline.ingest_appearances import ingest_appearances
+        from tests.conftest import write_csv
+
+        write_csv(tmp_path / "appearances.csv", [
+            "appearance_id", "player_id", "game_id", "player_club_id",
+            "player_current_club_id", "player_name", "competition_id", "date",
+            "yellow_cards", "red_cards", "goals", "assists", "minutes_played",
+        ], [
+            # First row
+            {"appearance_id": "100_gB_v1", "player_id": "100", "game_id": "gB",
+             "player_club_id": "10", "player_current_club_id": "10",
+             "player_name": "Player One", "competition_id": "GB1",
+             "date": "2023-08-12", "yellow_cards": "0", "red_cards": "0",
+             "goals": "0", "assists": "0", "minutes_played": "60"},
+            # Same player_id+game_id, different stats — last should win
+            {"appearance_id": "100_gB_v2", "player_id": "100", "game_id": "gB",
+             "player_club_id": "10", "player_current_club_id": "10",
+             "player_name": "Player One", "competition_id": "GB1",
+             "date": "2023-08-12", "yellow_cards": "1", "red_cards": "0",
+             "goals": "2", "assists": "1", "minutes_played": "90"},
+        ])
+
+        ingest_appearances(seeded_session, tmp_path)
+        rows = seeded_session.query(Appearance).filter_by(game_id="gB").all()
+        assert len(rows) == 1
+        a = rows[0]
+        # Last-write-wins: the v2 stats should be present.
+        assert a.goals == 2
+        assert a.assists == 1
+        assert a.minutes_played == 90
+        assert a.yellow_cards == 1
