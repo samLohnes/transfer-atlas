@@ -219,4 +219,48 @@ def data_dir(tmp_path):
         {"player_id": "", "date": "2023-06-01", "market_value_in_eur": "1000000.0"},
     ])
 
+    # appearances.csv — covers all skip paths
+    write_csv(tmp_path / "appearances.csv", [
+        "appearance_id", "player_id", "game_id", "player_club_id",
+        "player_current_club_id", "player_name", "competition_id", "date",
+        "yellow_cards", "red_cards", "goals", "assists", "minutes_played",
+    ], [
+        # Valid appearance
+        {"appearance_id": "100_g1", "player_id": "100", "game_id": "g1",
+         "player_club_id": "10", "player_current_club_id": "10",
+         "player_name": "Player One", "competition_id": "GB1",
+         "date": "2023-08-12", "yellow_cards": "0", "red_cards": "0",
+         "goals": "1", "assists": "0", "minutes_played": "90"},
+        # Valid appearance, second player
+        {"appearance_id": "200_g1", "player_id": "200", "game_id": "g1",
+         "player_club_id": "20", "player_current_club_id": "20",
+         "player_name": "Player Two", "competition_id": "ES1",
+         "date": "2023-08-13", "yellow_cards": "1", "red_cards": "0",
+         "goals": "0", "assists": "1", "minutes_played": "75"},
+        # Unknown player — should be skipped
+        {"appearance_id": "999_g1", "player_id": "999", "game_id": "g1",
+         "player_club_id": "10", "player_current_club_id": "10",
+         "player_name": "Unknown", "competition_id": "GB1",
+         "date": "2023-08-12", "yellow_cards": "0", "red_cards": "0",
+         "goals": "0", "assists": "0", "minutes_played": "0"},
+        # Unknown club — should be skipped
+        {"appearance_id": "100_g2", "player_id": "100", "game_id": "g2",
+         "player_club_id": "9999", "player_current_club_id": "9999",
+         "player_name": "Player One", "competition_id": "GB1",
+         "date": "2023-08-19", "yellow_cards": "0", "red_cards": "0",
+         "goals": "0", "assists": "0", "minutes_played": "60"},
+        # Missing game_id — should be skipped
+        {"appearance_id": "100_g3", "player_id": "100", "game_id": "",
+         "player_club_id": "10", "player_current_club_id": "10",
+         "player_name": "Player One", "competition_id": "GB1",
+         "date": "2023-08-26", "yellow_cards": "0", "red_cards": "0",
+         "goals": "0", "assists": "0", "minutes_played": "90"},
+        # Bad date — should be skipped
+        {"appearance_id": "100_g4", "player_id": "100", "game_id": "g4",
+         "player_club_id": "10", "player_current_club_id": "10",
+         "player_name": "Player One", "competition_id": "GB1",
+         "date": "not-a-date", "yellow_cards": "0", "red_cards": "0",
+         "goals": "0", "assists": "0", "minutes_played": "90"},
+    ])
+
     return tmp_path
