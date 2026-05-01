@@ -619,3 +619,63 @@ class TestFullPipelineE2E:
         }
 
         assert first_run == second_run
+
+
+class TestIngestAppearances:
+    """Direct tests for ingest_appearances against the seeded shared fixture.
+
+    Pins behavior so the polars rewrite in PR 2 must produce identical results.
+    """
+
+    def test_inserts_valid_appearances(self, seeded_session, data_dir):
+        from app.models import Appearance
+        from pipeline.ingest_appearances import ingest_appearances
+
+        ingested = ingest_appearances(seeded_session, data_dir)
+        appearances = seeded_session.query(Appearance).all()
+
+        # 2 valid rows from the fixture; 4 skipped (unknown player, unknown club,
+        # missing game_id, bad date)
+        assert ingested == 2
+        assert len(appearances) == 2
+        game_ids = {a.game_id for a in appearances}
+        assert game_ids == {"g1"}  # both valid rows share game_id g1
+
+    def test_skips_unknown_player(self, seeded_session, data_dir):
+        from app.models import Appearance
+        from pipeline.ingest_appearances import ingest_appearances
+
+        ingest_appearances(seeded_session, data_dir)
+        # The unknown-player row (player_id=999) must not have been inserted.
+        # Confirm via player_id link only — there's no player_id 999 in seeded_session.
+        appearances = seeded_session.query(Appearance).all()
+        player_ids = {a.player_id for a in appearances}
+        assert 999 not in player_ids
+
+    def test_skips_unknown_club(self, seeded_session, data_dir):
+        from app.models import Appearance
+        from pipeline.ingest_appearances import ingest_appearances
+
+        ingest_appearances(seeded_session, data_dir)
+        appearances = seeded_session.query(Appearance).all()
+        # Game g2 used unknown club — must not appear.
+        assert all(a.game_id != "g2" for a in appearances)
+
+    def test_skips_missing_game_id(self, seeded_session, data_dir):
+        from app.models import Appearance
+        from pipeline.ingest_appearances import ingest_appearances
+
+        ingest_appearances(seeded_session, data_dir)
+        appearances = seeded_session.query(Appearance).all()
+        # Row with empty game_id should be filtered out.
+        assert all(a.game_id != "" for a in appearances)
+        assert all(a.game_id is not None for a in appearances)
+
+    def test_skips_bad_date(self, seeded_session, data_dir):
+        from app.models import Appearance
+        from pipeline.ingest_appearances import ingest_appearances
+
+        ingest_appearances(seeded_session, data_dir)
+        appearances = seeded_session.query(Appearance).all()
+        # Row with date="not-a-date" used game_id g4 — must not appear.
+        assert all(a.game_id != "g4" for a in appearances)
