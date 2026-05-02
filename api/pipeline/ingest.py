@@ -683,63 +683,86 @@ def ingest_transfers(session: Session, data_dir: Path) -> int:
 def ingest_valuations(session: Session, data_dir: Path) -> int:
     """Upsert player_valuations rows via ON CONFLICT (player_id, valuation_date).
 
-    Returns total rows successfully ingested. valuation_eur is stored in cents
-    (the column name is historical — actual unit is cents, matching Transfer.fee_eur).
+    Vectorized polars implementation. valuation_eur is stored in cents.
     """
+    import polars as pl
+
+    from pipeline.ingest_appearances import _build_lookup
+
     _validate_schema(data_dir / "player_valuations.csv")
 
-    player_tm_map: dict[str, int] = {
-        str(p.transfermarkt_id): p.id
-        for p in session.query(Player.transfermarkt_id, Player.id).all()
-        if p.transfermarkt_id
-    }
+    player_lookup = _build_lookup(session, Player, "player")
+
+    df = pl.read_csv(
+        data_dir / "player_valuations.csv",
+        schema_overrides={
+            "player_id": pl.String,
+            "date": pl.String,
+            "market_value_in_eur": pl.Float64,
+        },
+    )
+    total_seen = df.height
+
+    # Drop empty player_id
+    before = df.height
+    df = df.filter(pl.col("player_id").is_not_null() & (pl.col("player_id") != ""))
+    skipped_empty_player = before - df.height
+
+    # Resolve player_id (anti-join for skip count)
+    skipped_unknown_player = df.join(
+        player_lookup, left_on="player_id", right_on="player_tm", how="anti"
+    ).height
+    df = df.join(
+        player_lookup, left_on="player_id", right_on="player_tm", how="inner"
+    )
+
+    skipped = skipped_empty_player + skipped_unknown_player
+
+    # Drop null/empty market_value_in_eur
+    before = df.height
+    df = df.filter(pl.col("market_value_in_eur").is_not_null())
+    skipped += before - df.height
+
+    # Parse date; drop nulls
+    df = df.with_columns(
+        pl.col("date").str.to_date(format="%Y-%m-%d", strict=False).alias("date_parsed")
+    )
+    before = df.height
+    df = df.filter(pl.col("date_parsed").is_not_null())
+    skipped += before - df.height
+
+    # Cast value to cents
+    df = df.with_columns(
+        (pl.col("market_value_in_eur") * 100).cast(pl.Int64, strict=False).alias("valuation_eur")
+    )
+
+    # Resolve final player id column name (polars renames colliding right-side columns).
+    # The integer player_id from the lookup may be at "player_id" or "player_id_right"
+    # depending on collision resolution. Prefer Int64 dtype.
+    schema = df.schema
+    pid_col = "player_id"
+    if schema.get("player_id_right") == pl.Int64:
+        pid_col = "player_id_right"
+    elif schema.get("player_id") != pl.Int64:
+        # If the original String "player_id" is still here and the int one is named differently,
+        # search for it
+        for name, dtype in schema.items():
+            if name.startswith("player_id") and dtype == pl.Int64:
+                pid_col = name
+                break
+
+    df_final = df.select([
+        pl.col(pid_col).alias("player_id"),
+        pl.col("valuation_eur"),
+        pl.col("date_parsed").alias("valuation_date"),
+    ])
 
     inserted_total = 0
     updated_total = 0
-    skipped = 0
-    chunk_idx = 0
-    total_seen = 0
 
-    for chunk in pd.read_csv(
-        data_dir / "player_valuations.csv", low_memory=False, chunksize=CHUNK_SIZE
-    ):
-        chunk_idx += 1
-        rows: list[dict] = []
-
-        for row in chunk.itertuples(index=False):
-            total_seen += 1
-
-            player_tm_id = _safe_int_str(getattr(row, "player_id", None))
-            if not player_tm_id or player_tm_id not in player_tm_map:
-                skipped += 1
-                continue
-            player_id = player_tm_map[player_tm_id]
-
-            val_eur = getattr(row, "market_value_in_eur", None)
-            if pd.isna(val_eur) or val_eur == "":
-                skipped += 1
-                continue
-            val_cents = int(float(val_eur) * 100)
-
-            val_date = None
-            date_raw = getattr(row, "date", None)
-            if pd.notna(date_raw) and date_raw != "":
-                try:
-                    val_date = pd.to_datetime(date_raw).date()
-                except Exception:
-                    skipped += 1
-                    continue
-            else:
-                skipped += 1
-                continue
-
-            rows.append({
-                "player_id": player_id,
-                "valuation_eur": val_cents,
-                "valuation_date": val_date,
-            })
-
-        if rows:
+    if df_final.height > 0:
+        for slice_df in df_final.iter_slices(n_rows=CHUNK_SIZE):
+            rows = slice_df.to_dicts()
             ins, upd = upsert_chunk(
                 session, PlayerValuation, rows,
                 conflict_columns=["player_id", "valuation_date"],
@@ -748,9 +771,6 @@ def ingest_valuations(session: Session, data_dir: Path) -> int:
             inserted_total += ins
             updated_total += upd
             session.flush()
-
-        if chunk_idx % 5 == 0:
-            logger.info("  ... %d valuation chunks processed", chunk_idx)
 
     session.commit()
     logger.info(
