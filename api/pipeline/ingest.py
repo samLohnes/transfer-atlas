@@ -18,12 +18,7 @@ from app.models import (
     PlayerValuation,
     Transfer,
 )
-from pipeline.parse import (
-    derive_position_group,
-    derive_transfer_window,
-    normalize_season,
-    parse_fee,
-)
+from pipeline.parse import derive_position_group
 from pipeline.upsert import upsert_chunk
 
 logger = logging.getLogger(__name__)

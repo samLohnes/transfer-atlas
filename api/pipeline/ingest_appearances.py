@@ -167,9 +167,7 @@ def ingest_appearances(session: Session, data_dir: Path) -> int:
     updated_total = 0
 
     if df_final.height > 0:
-        chunk_idx = 0
-        for slice_df in df_final.iter_slices(n_rows=CHUNK_SIZE):
-            chunk_idx += 1
+        for chunk_idx, slice_df in enumerate(df_final.iter_slices(n_rows=CHUNK_SIZE), start=1):
             rows = slice_df.to_dicts()
             ins, upd = upsert_chunk(
                 session, Appearance, rows,

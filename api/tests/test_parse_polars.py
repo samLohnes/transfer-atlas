@@ -19,7 +19,6 @@ from pipeline.parse_polars import (
     parse_fee_expr,
 )
 
-
 # Same input set as test_ingest_helpers.TestParseFee
 PARSE_FEE_INPUTS = [
     None,
