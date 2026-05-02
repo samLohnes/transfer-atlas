@@ -101,11 +101,47 @@ def parse_fee_expr(col: pl.Expr) -> pl.Expr:
 
 
 def derive_transfer_window_expr(date_col: pl.Expr, season_col: pl.Expr) -> pl.Expr:
-    """Vectorized derive_transfer_window.
+    """Vectorized derive_transfer_window. See module docstring."""
+    month = date_col.dt.month()
+    year = date_col.dt.year()
 
-    Returns a String expression: 'Summer YYYY' / 'Winter YYYY' / null.
-    """
-    raise NotImplementedError  # implemented in Task 5
+    from_date = (
+        pl.when(date_col.is_null()).then(pl.lit(None, dtype=pl.String))
+        .when(month.is_between(6, 12, closed="both"))
+        .then(pl.format("Summer {}", year))
+        .when(month.is_between(1, 5, closed="both"))
+        .then(pl.format("Winter {}", year))
+        .otherwise(pl.lit(None, dtype=pl.String))
+    )
+
+    season_start = _season_start_year_expr(season_col)
+    from_season = (
+        pl.when(season_start.is_not_null())
+        .then(pl.format("Summer {}", season_start))
+        .otherwise(pl.lit(None, dtype=pl.String))
+    )
+
+    return (
+        pl.when(from_date.is_not_null())
+        .then(from_date)
+        .otherwise(from_season)
+    )
+
+
+def _season_start_year_expr(col: pl.Expr) -> pl.Expr:
+    """Internal helper: extract the start year from a season string as Int32 or null."""
+    raw = col.str.extract(r"^(\d{2,4})[/\-]", 1)
+    raw_int = raw.cast(pl.Int32, strict=False)
+    raw_len = raw.str.len_chars()
+    return (
+        pl.when(raw.is_null()).then(pl.lit(None, dtype=pl.Int32))
+        .when(raw_len == 2).then(
+            pl.when(raw_int < 80).then(raw_int + 2000)
+            .otherwise(raw_int + 1900)
+        )
+        .when(raw_len >= 3).then(raw_int)
+        .otherwise(pl.lit(None, dtype=pl.Int32))
+    )
 
 
 def normalize_season_expr(col: pl.Expr) -> pl.Expr:

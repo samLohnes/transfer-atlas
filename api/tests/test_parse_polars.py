@@ -52,3 +52,35 @@ class TestParseFeeParity:
             f"({row['fee_eur']}, {row['is_loan']}, {row['exclude']}); "
             f"python = {py_result}"
         )
+
+
+WINDOW_INPUTS: list[tuple[date | None, str | None]] = [
+    (date(2023, 6, 1), None),
+    (date(2023, 8, 15), None),
+    (date(2023, 12, 31), None),
+    (date(2024, 1, 15), None),
+    (date(2024, 5, 31), None),
+    (None, "23/24"),
+    (None, "2024/2025"),
+    (None, None),
+    (None, ""),
+    (None, "garbage"),
+]
+
+
+class TestDeriveTransferWindowParity:
+    @pytest.mark.parametrize("transfer_date,season", WINDOW_INPUTS)
+    def test_matches_python(self, transfer_date, season):
+        py_result = derive_transfer_window(transfer_date, season)
+        df = pl.DataFrame(
+            {"d": [transfer_date], "s": [season]},
+            schema={"d": pl.Date, "s": pl.String},
+        )
+        result = df.with_columns(
+            derive_transfer_window_expr(pl.col("d"), pl.col("s")).alias("w")
+        )
+        polars_result = result.row(0, named=True)["w"]
+        assert polars_result == py_result, (
+            f"polars window({transfer_date}, {season!r}) = {polars_result!r}; "
+            f"python = {py_result!r}"
+        )
