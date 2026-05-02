@@ -1,6 +1,7 @@
 """Database ingestion steps for each entity type."""
 
 import logging
+import math
 from datetime import date, datetime
 from pathlib import Path
 
@@ -17,12 +18,7 @@ from app.models import (
     PlayerValuation,
     Transfer,
 )
-from pipeline.parse import (
-    derive_position_group,
-    derive_transfer_window,
-    normalize_season,
-    parse_fee,
-)
+from pipeline.parse import derive_position_group
 from pipeline.upsert import upsert_chunk
 
 logger = logging.getLogger(__name__)
@@ -204,43 +200,65 @@ def _validate_schema(csv_path: Path) -> None:
         )
 
 
+def _is_null(value: object) -> bool:
+    """Check if a value is None, empty string, or NaN — without pandas.
+
+    Also treats pandas NA/NaT-like objects (which raise on bool coercion) as null.
+    """
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value == ""
+    if isinstance(value, float) and math.isnan(value):
+        return True
+    # Catch pandas NA / NaT and similar objects whose bool() raises TypeError
+    try:
+        bool(value)
+    except (TypeError, ValueError):
+        return True
+    return False
+
+
 def _safe_str(value: object) -> str | None:
     """Convert a value to string, returning None for NaN/empty."""
-    if pd.isna(value) or value == "":
+    if _is_null(value):
         return None
     return str(value)
 
 
 def _safe_int_str(value: object) -> str | None:
     """Convert a numeric value to its int string form (e.g. 100.0 → '100')."""
-    if pd.isna(value):
+    if _is_null(value):
         return None
-    return str(int(value))
+    try:
+        return str(int(float(value)))
+    except (ValueError, TypeError):
+        return None
 
 
 def _coerce_int_nullable(value: object) -> int | None:
-    """Coerce a value to int, preserving None for NaN/missing (unlike `_coerce_int_default`)."""
-    if value is None or pd.isna(value) or value == "":
+    """Coerce a value to int, preserving None for NaN/missing."""
+    if _is_null(value):
         return None
     try:
-        return int(value)
+        return int(float(value))
     except (ValueError, TypeError):
         return None
 
 
 def _coerce_int_default(value: object, default: int = 0) -> int:
     """Coerce a value to int, falling back to `default` for NaN/missing/unparseable."""
-    if value is None or pd.isna(value) or value == "":
+    if _is_null(value):
         return default
     try:
-        return int(value)
+        return int(float(value))
     except (ValueError, TypeError):
         return default
 
 
 def _normalize_foot(value: object) -> str | None:
     """Normalize preferred-foot to title case ('Left', 'Right', 'Both'). Unknown → None."""
-    if value is None or pd.isna(value) or value == "":
+    if _is_null(value):
         return None
     s = str(value).strip().lower()
     if s in ("left", "right", "both"):
@@ -250,7 +268,7 @@ def _normalize_foot(value: object) -> str | None:
 
 def _market_value_to_cents(value: object) -> int | None:
     """Convert a EUR numeric (e.g. 75000000.0) to EUR cents (7500000000). NaN/empty → None."""
-    if value is None or pd.isna(value) or value == "":
+    if _is_null(value):
         return None
     try:
         return int(float(value) * 100)
@@ -259,13 +277,41 @@ def _market_value_to_cents(value: object) -> int | None:
 
 
 def _parse_date(value: object) -> date | None:
-    """Parse a date value, tolerating malformed strings via pandas' `errors='coerce'`."""
-    if value is None or pd.isna(value) or value == "":
+    """Parse a date value, tolerating malformed strings.
+
+    Accepts ISO `YYYY-MM-DD`, US `MM/DD/YYYY`, datetime/date objects, and pandas
+    Timestamp instances (via `.date()` duck-typing). Anything else returns None.
+    """
+    if _is_null(value):
         return None
-    dt = pd.to_datetime(value, errors="coerce")
-    if pd.isna(dt):
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    # pandas Timestamp duck-typing — has a callable .date() returning a date
+    if hasattr(value, "date") and callable(getattr(value, "date")):
+        try:
+            d = value.date()
+            if isinstance(d, date) and not isinstance(d, datetime):
+                return d
+        except Exception:
+            pass
+    s = str(value).strip()
+    if not s:
         return None
-    return dt.date()
+    try:
+        return datetime.strptime(s, "%Y-%m-%d").date()
+    except ValueError:
+        pass
+    try:
+        return datetime.strptime(s, "%m/%d/%Y").date()
+    except ValueError:
+        pass
+    try:
+        return datetime.fromisoformat(s).date()
+    except ValueError:
+        pass
+    return None
 
 
 def _get_or_create_country(session: Session, name: str, country_cache: dict[str, int]) -> int:
@@ -518,97 +564,123 @@ def ingest_clubs(
 
 
 def ingest_transfers(session: Session, data_dir: Path) -> int:
-    """Upsert transfers via ON CONFLICT on (player_id, transfer_date, from_club_id, to_club_id).
+    """Upsert transfers via ON CONFLICT on the natural-key index.
 
-    Matches the existing uq_transfers_natural_key unique index. Returns total
-    rows processed (inserts + updates).
+    Vectorized polars implementation. parse_fee, derive_transfer_window, and
+    normalize_season are pushed into polars expressions via parse_polars.
     """
+    import polars as pl
+
+    from pipeline.ingest_appearances import _build_lookup
+    from pipeline.parse_polars import (
+        derive_transfer_window_expr,
+        normalize_season_expr,
+        parse_fee_expr,
+    )
+
     _validate_schema(data_dir / "transfers.csv")
 
-    player_tm_map: dict[str, int] = {
-        str(p.transfermarkt_id): p.id
-        for p in session.query(Player.transfermarkt_id, Player.id).all()
-        if p.transfermarkt_id
-    }
-    club_tm_map: dict[str, int] = {
-        str(c.transfermarkt_id): c.id
-        for c in session.query(Club.transfermarkt_id, Club.id).all()
-        if c.transfermarkt_id
-    }
+    player_lookup = _build_lookup(session, Player, "player")
+    from_club_lookup = _build_lookup(session, Club, "from_club")
+    to_club_lookup = _build_lookup(session, Club, "to_club")
+
+    df = pl.read_csv(
+        data_dir / "transfers.csv",
+        schema_overrides={
+            "player_id": pl.String,
+            "from_club_id": pl.String,
+            "to_club_id": pl.String,
+            "transfer_date": pl.String,
+            "transfer_fee": pl.String,
+            "transfer_season": pl.String,
+        },
+    )
+    total_seen = df.height
+
+    # Parse fee FIRST so we can drop excludes (loan returns) before any other work.
+    # parse_fee_expr returns a Struct(fee_eur, is_loan, exclude); unnest into columns.
+    df = df.with_columns(
+        parse_fee_expr(pl.col("transfer_fee")).alias("_fee")
+    ).unnest("_fee")
+    excluded_loans = df.filter(pl.col("exclude")).height
+    df = df.filter(~pl.col("exclude"))
+
+    # Drop empty IDs
+    before = df.height
+    df = df.filter(
+        pl.col("player_id").is_not_null() & (pl.col("player_id") != "") &
+        pl.col("from_club_id").is_not_null() & (pl.col("from_club_id") != "") &
+        pl.col("to_club_id").is_not_null() & (pl.col("to_club_id") != "")
+    )
+    skipped = before - df.height
+
+    # Resolve player + clubs via inner joins. Each join filters out unresolved rows.
+    before = df.height
+    df = df.join(player_lookup, left_on="player_id", right_on="player_tm", how="inner")
+    skipped += before - df.height
+
+    before = df.height
+    df = df.join(from_club_lookup, left_on="from_club_id", right_on="from_club_tm", how="inner")
+    skipped += before - df.height
+
+    before = df.height
+    df = df.join(to_club_lookup, left_on="to_club_id", right_on="to_club_tm", how="inner")
+    skipped += before - df.height
+
+    # Parse transfer_date
+    df = df.with_columns(
+        pl.col("transfer_date").str.to_date(format="%Y-%m-%d", strict=False).alias("transfer_date_parsed")
+    )
+
+    # Derive window + normalize season — these are vectorized expressions.
+    # Note: derive_transfer_window_expr handles null dates by falling back to season.
+    df = df.with_columns([
+        derive_transfer_window_expr(
+            pl.col("transfer_date_parsed"), pl.col("transfer_season")
+        ).alias("transfer_window"),
+        normalize_season_expr(pl.col("transfer_season")).alias("season_norm"),
+    ])
+
+    # Drop rows where window or season is null (matches Python: if not window or not season: skip)
+    before = df.height
+    df = df.filter(
+        pl.col("transfer_window").is_not_null() &
+        pl.col("season_norm").is_not_null()
+    )
+    skipped += before - df.height
+
+    # Final id column resolution. After three joins, the right-side `*_id` columns from
+    # the lookups may be at `*_id` or `*_id_right` depending on collision resolution.
+    # Look up each by Int64 dtype.
+    schema = df.schema
+    def find_int_id(prefix: str) -> str:
+        """Find the first Int64 column whose name starts with prefix."""
+        for name, dtype in schema.items():
+            if name.startswith(prefix) and dtype == pl.Int64:
+                return name
+        raise RuntimeError(f"could not find Int64 column starting with {prefix}")
+
+    pid_col = find_int_id("player_id")
+    fid_col = find_int_id("from_club_id")
+    tid_col = find_int_id("to_club_id")
+
+    df_final = df.select([
+        pl.col(pid_col).alias("player_id"),
+        pl.col(fid_col).alias("from_club_id"),
+        pl.col(tid_col).alias("to_club_id"),
+        pl.col("transfer_date_parsed").alias("transfer_date"),
+        pl.col("fee_eur"),
+        pl.col("is_loan").alias("fee_is_loan"),
+        pl.col("transfer_window"),
+        pl.col("season_norm").alias("season"),
+    ])
 
     inserted_total = 0
     updated_total = 0
-    skipped = 0
-    excluded_loans = 0
-    chunk_idx = 0
-    total_seen = 0
 
-    for chunk in pd.read_csv(data_dir / "transfers.csv", low_memory=False, chunksize=CHUNK_SIZE):
-        chunk_idx += 1
-        if chunk_idx == 1:
-            logger.info("Processing transfer records (chunked, ON CONFLICT)...")
-
-        rows: list[dict] = []
-
-        for row in chunk.itertuples(index=False):
-            total_seen += 1
-
-            # Parse fee — parse_fee may flag the row as an exclude (loan returns)
-            fee_str = _safe_str(getattr(row, "transfer_fee", None))
-            fee_cents, is_loan, exclude = parse_fee(fee_str)
-            if exclude:
-                excluded_loans += 1
-                continue
-
-            # Resolve player
-            player_tm_id = _safe_int_str(getattr(row, "player_id", None))
-            if not player_tm_id or player_tm_id not in player_tm_map:
-                skipped += 1
-                continue
-            player_id = player_tm_map[player_tm_id]
-
-            # Resolve clubs
-            from_club_tm = _safe_int_str(getattr(row, "from_club_id", None))
-            to_club_tm = _safe_int_str(getattr(row, "to_club_id", None))
-            if not from_club_tm or not to_club_tm:
-                skipped += 1
-                continue
-            from_club_id = club_tm_map.get(from_club_tm)
-            to_club_id = club_tm_map.get(to_club_tm)
-            if not from_club_id or not to_club_id:
-                skipped += 1
-                continue
-
-            # Parse date
-            transfer_date: date | None = None
-            transfer_date_raw = getattr(row, "transfer_date", None)
-            if pd.notna(transfer_date_raw) and transfer_date_raw != "":
-                try:
-                    transfer_date = pd.to_datetime(transfer_date_raw).date()
-                except Exception:
-                    pass
-
-            # Derive window and season
-            season_raw = _safe_str(getattr(row, "transfer_season", None))
-            window = derive_transfer_window(transfer_date, season_raw)
-            season = normalize_season(season_raw)
-
-            if not window or not season:
-                skipped += 1
-                continue
-
-            rows.append({
-                "player_id": player_id,
-                "from_club_id": from_club_id,
-                "to_club_id": to_club_id,
-                "transfer_date": transfer_date,
-                "fee_eur": fee_cents,
-                "fee_is_loan": is_loan,
-                "transfer_window": window,
-                "season": season,
-            })
-
-        if rows:
+    if df_final.height > 0:
+        for slice_df in df_final.iter_slices(n_rows=CHUNK_SIZE):
+            rows = slice_df.to_dicts()
             ins, upd = upsert_chunk(
                 session, Transfer, rows,
                 conflict_columns=["player_id", "transfer_date", "from_club_id", "to_club_id"],
@@ -617,9 +689,6 @@ def ingest_transfers(session: Session, data_dir: Path) -> int:
             inserted_total += ins
             updated_total += upd
             session.flush()
-
-        if chunk_idx % 5 == 0:
-            logger.info("  ... %d transfer chunks processed", chunk_idx)
 
     session.commit()
     logger.info(
@@ -632,63 +701,86 @@ def ingest_transfers(session: Session, data_dir: Path) -> int:
 def ingest_valuations(session: Session, data_dir: Path) -> int:
     """Upsert player_valuations rows via ON CONFLICT (player_id, valuation_date).
 
-    Returns total rows successfully ingested. valuation_eur is stored in cents
-    (the column name is historical — actual unit is cents, matching Transfer.fee_eur).
+    Vectorized polars implementation. valuation_eur is stored in cents.
     """
+    import polars as pl
+
+    from pipeline.ingest_appearances import _build_lookup
+
     _validate_schema(data_dir / "player_valuations.csv")
 
-    player_tm_map: dict[str, int] = {
-        str(p.transfermarkt_id): p.id
-        for p in session.query(Player.transfermarkt_id, Player.id).all()
-        if p.transfermarkt_id
-    }
+    player_lookup = _build_lookup(session, Player, "player")
+
+    df = pl.read_csv(
+        data_dir / "player_valuations.csv",
+        schema_overrides={
+            "player_id": pl.String,
+            "date": pl.String,
+            "market_value_in_eur": pl.Float64,
+        },
+    )
+    total_seen = df.height
+
+    # Drop empty player_id
+    before = df.height
+    df = df.filter(pl.col("player_id").is_not_null() & (pl.col("player_id") != ""))
+    skipped_empty_player = before - df.height
+
+    # Resolve player_id (anti-join for skip count)
+    skipped_unknown_player = df.join(
+        player_lookup, left_on="player_id", right_on="player_tm", how="anti"
+    ).height
+    df = df.join(
+        player_lookup, left_on="player_id", right_on="player_tm", how="inner"
+    )
+
+    skipped = skipped_empty_player + skipped_unknown_player
+
+    # Drop null/empty market_value_in_eur
+    before = df.height
+    df = df.filter(pl.col("market_value_in_eur").is_not_null())
+    skipped += before - df.height
+
+    # Parse date; drop nulls
+    df = df.with_columns(
+        pl.col("date").str.to_date(format="%Y-%m-%d", strict=False).alias("date_parsed")
+    )
+    before = df.height
+    df = df.filter(pl.col("date_parsed").is_not_null())
+    skipped += before - df.height
+
+    # Cast value to cents
+    df = df.with_columns(
+        (pl.col("market_value_in_eur") * 100).cast(pl.Int64, strict=False).alias("valuation_eur")
+    )
+
+    # Resolve final player id column name (polars renames colliding right-side columns).
+    # The integer player_id from the lookup may be at "player_id" or "player_id_right"
+    # depending on collision resolution. Prefer Int64 dtype.
+    schema = df.schema
+    pid_col = "player_id"
+    if schema.get("player_id_right") == pl.Int64:
+        pid_col = "player_id_right"
+    elif schema.get("player_id") != pl.Int64:
+        # If the original String "player_id" is still here and the int one is named differently,
+        # search for it
+        for name, dtype in schema.items():
+            if name.startswith("player_id") and dtype == pl.Int64:
+                pid_col = name
+                break
+
+    df_final = df.select([
+        pl.col(pid_col).alias("player_id"),
+        pl.col("valuation_eur"),
+        pl.col("date_parsed").alias("valuation_date"),
+    ])
 
     inserted_total = 0
     updated_total = 0
-    skipped = 0
-    chunk_idx = 0
-    total_seen = 0
 
-    for chunk in pd.read_csv(
-        data_dir / "player_valuations.csv", low_memory=False, chunksize=CHUNK_SIZE
-    ):
-        chunk_idx += 1
-        rows: list[dict] = []
-
-        for row in chunk.itertuples(index=False):
-            total_seen += 1
-
-            player_tm_id = _safe_int_str(getattr(row, "player_id", None))
-            if not player_tm_id or player_tm_id not in player_tm_map:
-                skipped += 1
-                continue
-            player_id = player_tm_map[player_tm_id]
-
-            val_eur = getattr(row, "market_value_in_eur", None)
-            if pd.isna(val_eur) or val_eur == "":
-                skipped += 1
-                continue
-            val_cents = int(float(val_eur) * 100)
-
-            val_date = None
-            date_raw = getattr(row, "date", None)
-            if pd.notna(date_raw) and date_raw != "":
-                try:
-                    val_date = pd.to_datetime(date_raw).date()
-                except Exception:
-                    skipped += 1
-                    continue
-            else:
-                skipped += 1
-                continue
-
-            rows.append({
-                "player_id": player_id,
-                "valuation_eur": val_cents,
-                "valuation_date": val_date,
-            })
-
-        if rows:
+    if df_final.height > 0:
+        for slice_df in df_final.iter_slices(n_rows=CHUNK_SIZE):
+            rows = slice_df.to_dicts()
             ins, upd = upsert_chunk(
                 session, PlayerValuation, rows,
                 conflict_columns=["player_id", "valuation_date"],
@@ -697,9 +789,6 @@ def ingest_valuations(session: Session, data_dir: Path) -> int:
             inserted_total += ins
             updated_total += upd
             session.flush()
-
-        if chunk_idx % 5 == 0:
-            logger.info("  ... %d valuation chunks processed", chunk_idx)
 
     session.commit()
     logger.info(

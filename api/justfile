@@ -56,6 +56,12 @@ pipeline-force:
 pipeline-strict:
     DATABASE_URL={{db_url}} .venv/bin/python -m pipeline.run --strict
 
+# Run the pipeline with --force, captured by `time` for benchmarking.
+bench-pipeline:
+    @echo "=== bench start ==="
+    DATABASE_URL={{db_url}} time .venv/bin/python -m pipeline.run --force
+    @echo "=== bench end ==="
+
 # Run data quality checks against the current database state (read-only)
 quality:
     DATABASE_URL={{db_url}} .venv/bin/python -c "from app.database import SessionLocal; from pipeline.quality import run_quality_checks, log_report; import logging; logging.basicConfig(level=logging.INFO, format='%(levelname)-5s %(message)s'); s = SessionLocal(); log_report(run_quality_checks(s)); s.close()"

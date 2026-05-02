@@ -41,6 +41,7 @@ class TestSafeStr:
 class TestSafeIntStr:
     @pytest.mark.parametrize("value,expected", [
         (None, None),
+        ("", None),
         (float("nan"), None),
         (123.0, "123"),
         ("123", "123"),
