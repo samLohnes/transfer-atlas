@@ -84,3 +84,29 @@ class TestDeriveTransferWindowParity:
             f"polars window({transfer_date}, {season!r}) = {polars_result!r}; "
             f"python = {py_result!r}"
         )
+
+
+SEASON_INPUTS = [
+    "23/24",
+    "2023/2024",
+    "23-24",
+    "79/80",
+    "80/81",
+    "99/00",
+    None,
+    "",
+    "garbage",
+]
+
+
+class TestNormalizeSeasonParity:
+    @pytest.mark.parametrize("value", SEASON_INPUTS)
+    def test_matches_python(self, value):
+        py_result = normalize_season(value)
+        df = pl.DataFrame({"s": [value]}, schema={"s": pl.String})
+        result = df.with_columns(normalize_season_expr(pl.col("s")).alias("n"))
+        polars_result = result.row(0, named=True)["n"]
+        assert polars_result == py_result, (
+            f"polars normalize_season({value!r}) = {polars_result!r}; "
+            f"python = {py_result!r}"
+        )

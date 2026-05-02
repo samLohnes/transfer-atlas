@@ -145,8 +145,29 @@ def _season_start_year_expr(col: pl.Expr) -> pl.Expr:
 
 
 def normalize_season_expr(col: pl.Expr) -> pl.Expr:
-    """Vectorized normalize_season.
+    """Vectorized normalize_season. See module docstring."""
+    start_raw = col.str.extract(r"^(\d{2,4})[/\-]", 1)
+    end_raw = col.str.extract(r"^\d{2,4}[/\-](\d{2,4})", 1)
 
-    Returns a String expression: 'YYYY-YYYY' or null.
-    """
-    raise NotImplementedError  # implemented in Task 6
+    def _expand_year(raw: pl.Expr) -> pl.Expr:
+        """Expand a 2- or 4-digit year string to a full Int32 year, or null."""
+        raw_int = raw.cast(pl.Int32, strict=False)
+        raw_len = raw.str.len_chars()
+        return (
+            pl.when(raw.is_null()).then(pl.lit(None, dtype=pl.Int32))
+            .when(raw_len == 2).then(
+                pl.when(raw_int < 80).then(raw_int + 2000)
+                .otherwise(raw_int + 1900)
+            )
+            .when(raw_len >= 3).then(raw_int)
+            .otherwise(pl.lit(None, dtype=pl.Int32))
+        )
+
+    start_year = _expand_year(start_raw)
+    end_year = _expand_year(end_raw)
+
+    return (
+        pl.when(start_year.is_not_null() & end_year.is_not_null())
+        .then(pl.format("{}-{}", start_year, end_year))
+        .otherwise(pl.lit(None, dtype=pl.String))
+    )
